@@ -206,7 +206,7 @@ const Tiptap = ({
 
     // Editor
     return (
-        <div className='relative border border-border rounded-md bg-card h-full flex flex-col'>
+        <div className='relative border border-border rounded-md bg-card h-full w-full flex flex-col'>
             <TooltipProvider>
 
                 {/* start fixed menu */}
