@@ -34,3 +34,21 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Markdown Storage API
+
+POST `/api/markdown`
+
+Request body:
+
+```json
+{
+  "filename": "daily-notes",
+  "content": "# Heading\nYour markdown body",
+  "overwrite": false
+}
+```
+
+- `filename` can be provided with or without the `.md` extension; invalid characters are stripped.
+- Files are written into `server/documents`. Attempting to save an existing file without `overwrite: true` returns `409`.
+- Successful responses include the normalized filename and the relative path where the file was stored.

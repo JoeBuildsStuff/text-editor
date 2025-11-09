@@ -19,6 +19,7 @@ import { TiptapProps } from './types'
 import { Image } from '@tiptap/extension-image'
 import { CustomImageView } from './custom-image-view'
 import { deleteFile } from './supabase-file-manager'
+import { Markdown } from '@tiptap/markdown'
 
 import { TooltipProvider } from '@/components/ui/tooltip'
 import {
@@ -61,6 +62,7 @@ const Tiptap = ({
 
   const editor = useEditor({
     extensions: [
+        Markdown,
         StarterKit,
         Underline,
         TextAlign.configure({
@@ -113,6 +115,7 @@ const Tiptap = ({
         ] : [])
     ],
     content: content || ``,
+    contentType: 'markdown',
     immediatelyRender: false,
     onDelete(params: { type: string; node?: { type: { name: string }; attrs?: { src?: string } }; [key: string]: unknown }) {
       // Handle cleanup of deleted image and file nodes
@@ -129,7 +132,14 @@ const Tiptap = ({
     },
     onUpdate: ({ editor }) => {
       if (onChange) {
-        onChange(editor.getHTML())
+        try {
+          // Return markdown if available, otherwise fall back to HTML
+          const markdown = editor.getMarkdown()
+          onChange(markdown)
+        } catch {
+          // Fallback to HTML if markdown conversion fails
+          onChange(editor.getHTML())
+        }
       }
     },
     editorProps: {
@@ -147,11 +157,23 @@ const Tiptap = ({
 
   useEffect(() => {
     if (editor) {
-      const editorContent = editor.getHTML()
-      // Compare the content and update only if it's different.
-      // This prevents an infinite loop.
-      if (content !== editorContent) {
-        editor.commands.setContent((content as string) || '', { emitUpdate: false })
+      try {
+        // Try to get markdown content for comparison
+        const editorMarkdown = editor.getMarkdown()
+        // Compare the content and update only if it's different.
+        // This prevents an infinite loop.
+        if (content !== editorMarkdown) {
+          editor.commands.setContent((content as string) || '', { 
+            contentType: 'markdown',
+            emitUpdate: false 
+          })
+        }
+      } catch {
+        // Fallback to HTML comparison if markdown is not available
+        const editorContent = editor.getHTML()
+        if (content !== editorContent) {
+          editor.commands.setContent((content as string) || '', { emitUpdate: false })
+        }
       }
     }
   }, [content, editor])
