@@ -50,7 +50,7 @@ export function AppSidebar() {
         const data = await response.json()
         setMarkdownFiles(
           Array.isArray(data.files)
-            ? data.files.filter((file): file is MarkdownFile => Boolean(file?.slug))
+            ? data.files.filter((file: MarkdownFile) => Boolean(file?.slug))
             : []
         )
       } catch (error) {
@@ -151,7 +151,7 @@ export function AppSidebar() {
                   <Folder
                     value={DOCUMENTS_ROOT_ID}
                     element="documents"
-                    isSelectable={false}
+                    isSelectable={true}
                   >
                     {markdownFiles.map((file) => (
                       <TreeFile

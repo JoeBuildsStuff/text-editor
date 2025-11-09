@@ -266,7 +266,7 @@ const Tiptap = ({
                 <div className='h-full flex-1 overflow-y-auto py-2 px-6 prose prose-base dark:prose-invert max-w-none'>
                     <EditorContent 
                         editor={editor} 
-                        className='[&_a:hover]:cursor-pointer h-full flex-1' 
+                        className='[&_a:hover]:cursor-pointer h-full flex-1 [&_.ProseMirror]:outline-none [&_.ProseMirror]:focus:outline-none [&_.ProseMirror-focused]:outline-none [&_.ProseMirror]:border-none [&_.ProseMirror]:focus:border-none [&_.ProseMirror-focused]:border-none [&_.ProseMirror]:ring-0 [&_.ProseMirror]:focus:ring-0 [&_.ProseMirror-focused]:ring-0 [&_.ProseMirror]:shadow-none [&_.ProseMirror]:focus:shadow-none [&_.ProseMirror-focused]:shadow-none' 
                     />
                 </div>
                 {/* end editor */}
