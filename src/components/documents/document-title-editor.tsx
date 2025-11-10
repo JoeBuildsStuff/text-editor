@@ -135,7 +135,7 @@ export function DocumentTitleEditor({ id, title: initialTitle, slug }: DocumentT
           aria-label="Document title"
         />
         <Button
-          variant="destructive"
+          variant="outline"
           size="sm"
           onClick={handleDelete}
           disabled={isBusy}
