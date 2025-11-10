@@ -19,11 +19,8 @@ export default async function DocumentDetailPage({ params }: DocumentPageProps) 
   }
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-4xl flex-col gap-4 px-4 py-8">
+    <div className="mx-auto flex h-full w-full max-w-4xl flex-col gap-2">
       <DocumentTitleEditor id={file.id} title={file.title} slug={file.slug} />
-      <p className="text-sm text-muted-foreground">
-        documents/{file.documentPath}
-      </p>
       <Tiptap content={file.content ?? ""} />
     </div>
   )

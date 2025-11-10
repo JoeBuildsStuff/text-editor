@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import {
   createMarkdownFile,
+  deleteMarkdownFile,
   MarkdownFileOperationError,
   listMarkdownFiles,
   renameMarkdownFile,
@@ -23,6 +24,10 @@ const payloadSchema = z
 const renameSchema = z.object({
   id: z.string().uuid(),
   title: z.string().min(1, "Title is required").max(128, "Title is too long"),
+});
+
+const deleteSchema = z.object({
+  id: z.string().uuid(),
 });
 
 export async function POST(request: Request) {
@@ -83,5 +88,25 @@ export async function PATCH(request: Request) {
     }
     console.error("Failed to rename markdown file", error);
     return NextResponse.json({ error: "Failed to rename markdown file" }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const data = await request.json();
+    const payload = deleteSchema.parse(data);
+    const document = await deleteMarkdownFile(payload.id);
+
+    return NextResponse.json({ document });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      const message = error.issues[0]?.message ?? "Invalid payload";
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+    if (error instanceof MarkdownFileOperationError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    console.error("Failed to delete markdown file", error);
+    return NextResponse.json({ error: "Failed to delete markdown file" }, { status: 500 });
   }
 }

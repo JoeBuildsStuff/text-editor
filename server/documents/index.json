@@ -14,17 +14,10 @@
     "updatedAt": "2024-05-01T00:00:00.000Z"
   },
   {
-    "id": "912a7410-bde1-42ef-ab4d-ee5be548d192",
-    "title": "welcome",
-    "documentPath": "welcome.md",
-    "createdAt": "2025-11-10T00:53:51.055Z",
-    "updatedAt": "2025-11-10T00:53:51.055Z"
-  },
-  {
     "id": "779bbada-6575-454a-96c2-234205694a53",
-    "title": "guid",
-    "documentPath": "guid.md",
+    "title": "Guide",
+    "documentPath": "Guide.md",
     "createdAt": "2025-11-10T00:59:35.462Z",
-    "updatedAt": "2025-11-10T01:01:49.371Z"
+    "updatedAt": "2025-11-10T02:25:01.298Z"
   }
 ]

@@ -8,6 +8,8 @@ import {
   useTransition,
 } from "react"
 import { useRouter } from "next/navigation"
+import { Trash, Type } from "lucide-react"
+import { Button } from "../ui/button"
 
 function slugToPath(slug: string) {
   return slug
@@ -28,6 +30,7 @@ export function DocumentTitleEditor({ id, title: initialTitle, slug }: DocumentT
   const [currentSlug, setCurrentSlug] = useState(slug)
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+  const [isDeletePending, startDeleteTransition] = useTransition()
 
   useEffect(() => {
     setTitle(initialTitle)
@@ -87,21 +90,62 @@ export function DocumentTitleEditor({ id, title: initialTitle, slug }: DocumentT
     }
   }
 
+  const handleDelete = () => {
+    if (isDeletePending) return
+
+    startDeleteTransition(async () => {
+      try {
+        setError(null)
+        const response = await fetch("/api/markdown", {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ id }),
+        })
+
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}))
+          throw new Error(payload.error ?? "Failed to delete document")
+        }
+
+        router.replace("/documents")
+        router.refresh()
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Unable to delete document")
+      }
+    })
+  }
+
+  const isBusy = isPending || isDeletePending
+  const statusMessage = isDeletePending ? "Deleting…" : isPending ? "Saving…" : null
+
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center gap-2">
+        <Type className="size-4" />
+        <span className="text-sm text-muted-foreground">Title</span>
         <input
-          className="text-2xl font-semibold bg-transparent border-b border-transparent focus:border-border focus:outline-none"
+          className="bg-card rounded-sm py-1 px-2 justify-start w-full"
           value={title}
           onChange={(event) => setTitle(event.target.value)}
           onBlur={handleSave}
           onKeyDown={handleKeyDown}
-          disabled={isPending}
+          disabled={isBusy}
           aria-label="Document title"
         />
-        {isPending && <span className="text-xs text-muted-foreground">Saving…</span>}
+        <Button
+          variant="destructive"
+          size="sm"
+          onClick={handleDelete}
+          disabled={isBusy}
+          aria-label="Delete document"
+        >
+          <Trash className="size-4" />
+        </Button>
+        {statusMessage && <span className="text-xs text-muted-foreground">{statusMessage}</span>}
+        {error && <p className="text-xs text-destructive">{error}</p>}
       </div>
-      {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   )
 }

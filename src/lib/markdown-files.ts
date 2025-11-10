@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto"
-import { access, mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises"
+import { access, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises"
 import path from "node:path"
 
 export const MARKDOWN_DIR = path.join(process.cwd(), "server", "documents")
@@ -298,4 +298,23 @@ export async function renameMarkdownFile(id: string, proposedTitle: string) {
   await writeMetadata(records)
 
   return documentRecordToMeta(updatedRecord, false)
+}
+
+export async function deleteMarkdownFile(id: string) {
+  const records = await syncMetadataWithFilesystem()
+  const index = records.findIndex((record) => record.id === id)
+
+  if (index === -1) {
+    throw new MarkdownFileOperationError("Document not found", 404)
+  }
+
+  const record = records[index]
+  const absolutePath = path.join(MARKDOWN_DIR, record.documentPath)
+
+  await rm(absolutePath, { force: true })
+
+  records.splice(index, 1)
+  await writeMetadata(records)
+
+  return documentRecordToMeta(record, false)
 }
