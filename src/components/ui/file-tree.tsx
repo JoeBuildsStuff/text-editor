@@ -240,10 +240,11 @@ const Folder = forwardRef<
       >
         <AccordionPrimitive.Trigger
           className={cn(
-            `flex items-center gap-1 rounded-md text-sm`,
+            `flex w-full items-center gap-2 rounded-md p-2 text-sm justify-start`,
             className,
             {
-              "bg-muted rounded-md": isSelect && isSelectable,
+              "bg-muted/50 hover:bg-muted font-semibold": isSelect && isSelectable,
+              "hover:bg-muted": !isSelect && isSelectable,
               "cursor-pointer": isSelectable,
               "cursor-not-allowed opacity-50": !isSelectable,
             }
@@ -309,9 +310,10 @@ const File = forwardRef<
         type="button"
         disabled={!isSelectable}
         className={cn(
-          "flex w-fit items-center gap-1 rounded-md pr-1 text-sm duration-200 ease-in-out rtl:pr-0 rtl:pl-1",
+          "flex w-full items-center gap-2 rounded-md p-2 text-sm duration-200 ease-in-out justify-start",
           {
-            "bg-muted": isSelected && isSelectable,
+            "bg-muted/50 hover:bg-muted font-semibold": isSelected && isSelectable,
+            "hover:bg-muted": !isSelected && isSelectable,
           },
           isSelectable ? "cursor-pointer" : "cursor-not-allowed opacity-50",
           direction === "rtl" ? "rtl" : "ltr",
