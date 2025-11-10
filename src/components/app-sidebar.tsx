@@ -45,8 +45,8 @@ function buildDocumentsTree(files: MarkdownDocument[]): SidebarTreeElement[] {
   const root: SidebarTreeElement = {
     id: DOCUMENTS_ROOT_ID,
     name: "documents",
-    // Must Remain true so that we can expand and colapse the node
-    isSelectable: true,
+    // Hidden root used purely for building nested structure
+    isSelectable: false,
     children: [],
   }
 
@@ -86,7 +86,7 @@ function buildDocumentsTree(files: MarkdownDocument[]): SidebarTreeElement[] {
     })
   })
 
-  return [root]
+  return root.children ?? []
 }
 
 function renderTree(
@@ -245,7 +245,7 @@ export function AppSidebar() {
                 <Tree
                   className=""
                   elements={treeElements as TreeViewElement[]}
-                  initialExpandedItems={[DOCUMENTS_ROOT_ID]}
+                  initialExpandedItems={[]}
                   initialSelectedId={selectedSlug}
                 >
                   {renderTree(treeElements, {
