@@ -5,19 +5,5 @@
     "documentPath": "notes.md",
     "createdAt": "2024-05-01T00:00:00.000Z",
     "updatedAt": "2024-05-01T00:00:00.000Z"
-  },
-  {
-    "id": "d22efa17-7c2f-4daa-9c29-58e7d0ba264e",
-    "title": "Another",
-    "documentPath": "another-folder/another.md",
-    "createdAt": "2024-05-01T00:00:00.000Z",
-    "updatedAt": "2024-05-01T00:00:00.000Z"
-  },
-  {
-    "id": "779bbada-6575-454a-96c2-234205694a53",
-    "title": "Guide",
-    "documentPath": "Guide.md",
-    "createdAt": "2025-11-10T00:59:35.462Z",
-    "updatedAt": "2025-11-10T02:25:01.298Z"
   }
 ]
