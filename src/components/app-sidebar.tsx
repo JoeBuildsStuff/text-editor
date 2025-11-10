@@ -9,6 +9,7 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
+  SidebarGroupAction,
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarHeader,
@@ -18,7 +19,13 @@ import {
   SidebarMenuSub,
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar"
-import { ChevronRight, File as FileIcon, FilePlus, Folder as FolderIcon, FolderOpenIcon } from "lucide-react"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { ChevronRight, Ellipsis, File as FileIcon, FilePlus, Folder as FolderIcon, FolderOpenIcon, FolderPlus } from "lucide-react"
 import { SidebarLogo } from "@/components/app-sidebar-logo"
 import { usePathname, useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
@@ -181,6 +188,7 @@ export function AppSidebar() {
   const [filesError, setFilesError] = useState<string | null>(null)
   const [createError, setCreateError] = useState<string | null>(null)
   const [isCreating, startCreateTransition] = useTransition()
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false)
   const [openFolders, setOpenFolders] = useState<Set<string>>(new Set())
 
   useEffect(() => {
@@ -336,6 +344,59 @@ export function AppSidebar() {
     })
   }
 
+  const handleCreateFolder = () => {
+    if (isCreatingFolder || isCreating) return
+
+    setIsCreatingFolder(true)
+    startCreateTransition(async () => {
+      try {
+        setCreateError(null)
+        // Create a folder by creating a document inside a new folder
+        // The folder name will be sanitized and made unique if needed
+        const folderName = "untitled-folder"
+        const response = await fetch("/api/markdown", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ 
+            title: "untititled",
+            folderPath: folderName
+          }),
+        })
+
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}))
+          throw new Error(payload.error ?? "Failed to create folder")
+        }
+
+        const data = await response.json()
+        const document = data.document
+        if (!document) {
+          throw new Error("Missing document payload")
+        }
+
+        // Extract folder path from document path
+        const folderPath = document.documentPath.split("/").slice(0, -1).join("/")
+        if (folderPath) {
+          // Open the folder in the sidebar
+          const folderId = `${DOCUMENTS_ROOT_ID}/${folderPath}`
+          setOpenFolders((prev) => new Set(prev).add(folderId))
+        }
+
+        // Navigate to the new document
+        const slug = document.slug ?? document.id
+        if (slug) {
+          navigateToSlug(slug)
+        }
+      } catch (error) {
+        setCreateError(error instanceof Error ? error.message : "Unable to create folder")
+      } finally {
+        setIsCreatingFolder(false)
+      }
+    })
+  }
+
   return (
     <>
       <Sidebar>
@@ -345,42 +406,36 @@ export function AppSidebar() {
 
 
         <SidebarContent className="flex flex-col">
-          {/* Navigation */}
-          <SidebarGroup>
-            <SidebarGroupLabel>Navigation</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {navigationItems.map((item) => (
-                  <SidebarMenuItem key={item.href}>
-                    <SidebarMenuButton 
-                      asChild
-                      className={cn(
-                        "w-full justify-start",
-                        pathname.startsWith(item.href)
-                          ? "bg-muted/50 hover:bg-muted font-semibold"
-                          : "hover:bg-muted"
-                      )}
-                    >
-                      <Link href={item.href}>
-                        <item.icon className="w-3.5 h-3.5 mr-2 flex-none text-muted-foreground" />
-                        <span className="font-normal">{item.label}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-
           <SidebarGroup>
             <SidebarGroupLabel>Documents</SidebarGroupLabel>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <SidebarGroupAction title="Add Document or Folder">
+                  <Ellipsis className="size-4 text-muted-foreground" />
+                  <span className="sr-only">Add Document or Folder</span>
+                </SidebarGroupAction>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-48">
+                <DropdownMenuItem
+                  onClick={handleCreateDocument}
+                  disabled={isCreating || isCreatingFolder}
+                >
+                  <FilePlus className="mr-2 h-4 w-4" />
+                  <span>Add Document</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={handleCreateFolder}
+                  disabled={isCreating || isCreatingFolder}
+                >
+                  <FolderPlus className="mr-2 h-4 w-4" />
+                  <span>Add Folder</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <SidebarGroupContent>
               {isLoadingFiles && <p className="text-xs text-muted-foreground">Loading files…</p>}
               {filesError && !isLoadingFiles && (
                 <p className="text-xs text-destructive">{filesError}</p>
-              )}
-              {!isLoadingFiles && !filesError && treeElements.length === 0 && (
-                <p className="text-xs text-muted-foreground">No markdown files yet</p>
               )}
               {!isLoadingFiles && !filesError && treeElements.length > 0 && (
                 <SidebarMenu>
@@ -397,20 +452,8 @@ export function AppSidebar() {
           </SidebarGroup>
           
         </SidebarContent>
-        <SidebarFooter className="border-t border-sidebar-border/60 pt-4">
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={handleCreateDocument}
-                disabled={isCreating}
-                className="justify-start"
-              >
-                <FilePlus className="w-3.5 h-3.5 mr-2 flex-none text-muted-foreground" />
-                <span>{isCreating ? "Creating…" : "New untititled page"}</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-          {createError && <p className="mt-2 text-xs text-destructive">{createError}</p>}
+        <SidebarFooter className="">
+          {/* footer content here */}
         </SidebarFooter>
       </Sidebar>
     </>

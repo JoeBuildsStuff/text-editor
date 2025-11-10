@@ -15,6 +15,7 @@ const payloadSchema = z
     title: z.string().min(1).max(128).optional(),
     content: z.string().default(""),
     overwrite: z.boolean().optional(),
+    folderPath: z.string().max(256).optional(),
   })
   .refine((data) => Boolean(data.title ?? data.filename), {
     message: "Title is required",
@@ -43,7 +44,12 @@ export async function POST(request: Request) {
 
   try {
     const title = (payload.title ?? payload.filename) as string;
-    const document = await createMarkdownFile(title, payload.content ?? "", payload.overwrite);
+    const document = await createMarkdownFile(
+      title,
+      payload.content ?? "",
+      payload.overwrite,
+      payload.folderPath
+    );
 
     return NextResponse.json(
       {

@@ -240,7 +240,12 @@ async function findAvailableDocumentPath(baseName: string) {
   throw new MarkdownFileOperationError("Unable to create a unique filename", 500)
 }
 
-export async function createMarkdownFile(titleInput: string, content: string, overwrite?: boolean) {
+export async function createMarkdownFile(
+  titleInput: string,
+  content: string,
+  overwrite?: boolean,
+  folderPath?: string
+) {
   const title = titleInput.trim()
   if (!title) {
     throw new MarkdownFileOperationError("Title must contain alphanumeric characters", 422)
@@ -252,9 +257,67 @@ export async function createMarkdownFile(titleInput: string, content: string, ov
   }
 
   await ensureMarkdownDirectory()
-  const { documentPath, absolutePath } = overwrite
-    ? await resolveDocumentPath(sanitizedBase)
-    : await findAvailableDocumentPath(sanitizedBase)
+
+  let documentPath: string
+  let absolutePath: string
+
+  if (folderPath) {
+    // Create file in specified folder
+    const sanitizedFolderPath = folderPath
+      .split("/")
+      .map((segment) => sanitizeFilename(segment))
+      .filter(Boolean)
+      .join("/")
+    
+    if (!sanitizedFolderPath) {
+      throw new MarkdownFileOperationError("Invalid folder path", 422)
+    }
+
+    const filename = ensureMarkdownExtension(sanitizedBase)
+    documentPath = toPosixPath(`${sanitizedFolderPath}/${filename}`)
+    absolutePath = path.join(MARKDOWN_DIR, documentPath)
+
+    // Ensure the folder exists
+    const folderAbsolutePath = path.dirname(absolutePath)
+    await mkdir(folderAbsolutePath, { recursive: true })
+
+    // Check if file already exists (unless overwrite is true)
+    if (!overwrite) {
+      try {
+        await access(absolutePath)
+        // File exists, find available name
+        let attempt = 0
+        while (attempt < 1000) {
+          const suffix = attempt === 0 ? "" : `-${attempt}`
+          const candidateFilename = `${sanitizedBase}${suffix}.md`
+          const candidatePath = toPosixPath(`${sanitizedFolderPath}/${candidateFilename}`)
+          const candidateAbsolutePath = path.join(MARKDOWN_DIR, candidatePath)
+          try {
+            await access(candidateAbsolutePath)
+            attempt += 1
+          } catch {
+            documentPath = candidatePath
+            absolutePath = candidateAbsolutePath
+            break
+          }
+        }
+        if (attempt >= 1000) {
+          throw new MarkdownFileOperationError("Unable to create a unique filename", 500)
+        }
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+          throw error
+        }
+      }
+    }
+  } else {
+    // Create file at root level (existing behavior)
+    const resolved = overwrite
+      ? await resolveDocumentPath(sanitizedBase)
+      : await findAvailableDocumentPath(sanitizedBase)
+    documentPath = resolved.documentPath
+    absolutePath = resolved.absolutePath
+  }
 
   await writeFile(absolutePath, content ?? "", "utf-8")
   const record = await upsertRecordTitle(documentPath, title)
