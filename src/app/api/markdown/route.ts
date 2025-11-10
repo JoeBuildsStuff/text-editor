@@ -1,19 +1,28 @@
 import { NextResponse } from "next/server";
-import { access, writeFile } from "node:fs/promises";
-import path from "node:path";
 import { z } from "zod";
 
 import {
-  MARKDOWN_DIR,
-  ensureMarkdownDirectory,
-  ensureMarkdownExtension,
+  createMarkdownFile,
+  MarkdownFileOperationError,
   listMarkdownFiles,
-  sanitizeFilename,
+  renameMarkdownFile,
 } from "@/lib/markdown-files";
-const payloadSchema = z.object({
-  filename: z.string().min(1, "Filename is required").max(128, "Filename is too long"),
-  content: z.string().default(""),
-  overwrite: z.boolean().optional(),
+
+const payloadSchema = z
+  .object({
+    filename: z.string().min(1).max(128).optional(),
+    title: z.string().min(1).max(128).optional(),
+    content: z.string().default(""),
+    overwrite: z.boolean().optional(),
+  })
+  .refine((data) => Boolean(data.title ?? data.filename), {
+    message: "Title is required",
+    path: ["title"],
+  });
+
+const renameSchema = z.object({
+  id: z.string().uuid(),
+  title: z.string().min(1, "Title is required").max(128, "Title is too long"),
 });
 
 export async function POST(request: Request) {
@@ -27,36 +36,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: message }, { status: 400 });
   }
 
-  const sanitizedBase = sanitizeFilename(payload.filename);
-  if (!sanitizedBase) {
-    return NextResponse.json({ error: "Filename must contain alphanumeric characters" }, { status: 400 });
-  }
-
-  const finalName = ensureMarkdownExtension(sanitizedBase);
-  const filePath = path.join(MARKDOWN_DIR, finalName);
-
   try {
-    await ensureMarkdownDirectory();
-
-    if (!payload.overwrite) {
-      try {
-        await access(filePath);
-        return NextResponse.json({ error: "File already exists. Pass overwrite=true to replace it." }, { status: 409 });
-      } catch {
-        // File does not exist, safe to proceed
-      }
-    }
-
-    await writeFile(filePath, payload.content ?? "", "utf-8");
+    const title = (payload.title ?? payload.filename) as string;
+    const document = await createMarkdownFile(title, payload.content ?? "", payload.overwrite);
 
     return NextResponse.json(
       {
-        filename: finalName,
-        relativePath: path.relative(process.cwd(), filePath),
+        document,
       },
       { status: payload.overwrite ? 200 : 201 }
     );
   } catch (error) {
+    if (error instanceof MarkdownFileOperationError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.error("Failed to write markdown file", error);
     return NextResponse.json({ error: "Failed to write markdown file" }, { status: 500 });
   }
@@ -64,11 +57,31 @@ export async function POST(request: Request) {
 
 export async function GET() {
   try {
-    const files = await listMarkdownFiles();
+    const documents = await listMarkdownFiles({ includeContent: false });
 
-    return NextResponse.json({ files });
+    return NextResponse.json({ documents });
   } catch (error) {
     console.error("Failed to read markdown files", error);
     return NextResponse.json({ error: "Failed to read markdown files" }, { status: 500 });
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const data = await request.json();
+    const payload = renameSchema.parse(data);
+    const document = await renameMarkdownFile(payload.id, payload.title);
+
+    return NextResponse.json({ document });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      const message = error.issues[0]?.message ?? "Invalid payload";
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+    if (error instanceof MarkdownFileOperationError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    console.error("Failed to rename markdown file", error);
+    return NextResponse.json({ error: "Failed to rename markdown file" }, { status: 500 });
   }
 }

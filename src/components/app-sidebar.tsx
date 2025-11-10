@@ -22,12 +22,13 @@ import Link from "next/link"
 
 import { File as TreeFile, Folder, Tree, type TreeViewElement } from "@/components/ui/file-tree"
 
-type MarkdownFile = {
-  filename: string
-  relativePath: string
+const MARKDOWN_EXTENSION = /\.md$/i
+
+type MarkdownDocument = {
+  id: string
+  title: string
   documentPath: string
   slug: string
-  content?: string
 }
 
 const DOCUMENTS_ROOT_ID = "documents-root"
@@ -36,13 +37,13 @@ type SidebarTreeElement = TreeViewElement & {
   children?: SidebarTreeElement[]
 }
 
-function buildDocumentsTree(files: MarkdownFile[]): SidebarTreeElement[] {
+function buildDocumentsTree(files: MarkdownDocument[]): SidebarTreeElement[] {
   if (!files.length) return []
 
   const root: SidebarTreeElement = {
     id: DOCUMENTS_ROOT_ID,
     name: "documents",
-    isSelectable: true,
+    isSelectable: false,
     children: [],
   }
 
@@ -63,7 +64,7 @@ function buildDocumentsTree(files: MarkdownFile[]): SidebarTreeElement[] {
         folderNode = {
           id: folderId,
           name: segment,
-          isSelectable: true,
+          isSelectable: false,
           children: [],
         }
         currentNode.children.push(folderNode)
@@ -72,9 +73,11 @@ function buildDocumentsTree(files: MarkdownFile[]): SidebarTreeElement[] {
     })
 
     currentNode.children = currentNode.children ?? []
+    const displayName = file.title?.trim().length ? file.title : filename.replace(MARKDOWN_EXTENSION, "")
+
     currentNode.children.push({
       id: file.slug,
-      name: filename,
+      name: displayName,
       isSelectable: true,
     })
   })
@@ -116,26 +119,41 @@ function renderTree(
 export function AppSidebar() {
   const pathname = usePathname()
   const router = useRouter()
-  const [markdownFiles, setMarkdownFiles] = useState<MarkdownFile[]>([])
+  const [documents, setDocuments] = useState<MarkdownDocument[]>([])
   const [isLoadingFiles, setIsLoadingFiles] = useState(true)
   const [filesError, setFilesError] = useState<string | null>(null)
 
   useEffect(() => {
+    const controller = new AbortController()
     const fetchFiles = async () => {
       try {
         setIsLoadingFiles(true)
         setFilesError(null)
-        const response = await fetch("/api/markdown")
+        const response = await fetch("/api/markdown", { signal: controller.signal })
         if (!response.ok) {
           throw new Error("Unable to load markdown files")
         }
         const data = await response.json()
-        setMarkdownFiles(
-          Array.isArray(data.files)
-            ? data.files.filter((file: MarkdownFile) => Boolean(file?.slug))
+        const dataset = Array.isArray(data.documents)
+          ? data.documents
+          : Array.isArray(data.files)
+            ? data.files
             : []
-        )
+
+        const parsedDocuments = dataset.filter((doc: Partial<MarkdownDocument>): doc is MarkdownDocument => {
+          return (
+            typeof doc?.id === "string" &&
+            typeof doc?.slug === "string" &&
+            typeof doc?.documentPath === "string" &&
+            typeof doc?.title === "string"
+          )
+        })
+
+        setDocuments(parsedDocuments)
       } catch (error) {
+        if ((error as DOMException)?.name === "AbortError") {
+          return
+        }
         console.error(error)
         setFilesError(error instanceof Error ? error.message : "Something went wrong")
       } finally {
@@ -144,13 +162,25 @@ export function AppSidebar() {
     }
 
     fetchFiles()
-  }, [])
+    return () => controller.abort()
+  }, [pathname])
 
-  const treeElements = useMemo(() => buildDocumentsTree(markdownFiles), [markdownFiles])
+  const treeElements = useMemo(() => buildDocumentsTree(documents), [documents])
 
-  const selectedSlug = pathname.startsWith("/documents/")
-    ? decodeURIComponent(pathname.replace(/^\/documents\/?/, "")) || undefined
-    : undefined
+  const selectedSlug = useMemo(() => {
+    if (!pathname.startsWith("/documents")) return undefined
+    const segments = pathname.split("/").slice(2).filter(Boolean)
+    if (!segments.length) return undefined
+    return segments.map((segment) => decodeURIComponent(segment)).join("/")
+  }, [pathname])
+
+  const navigateToSlug = (slug: string) => {
+    const encodedPath = slug
+      .split("/")
+      .map((segment) => encodeURIComponent(segment))
+      .join("/")
+    router.push(`/documents/${encodedPath}`)
+  }
 
   const navigationItems = [
     {
@@ -214,7 +244,7 @@ export function AppSidebar() {
                   initialSelectedId={selectedSlug}
                 >
                   {renderTree(treeElements, {
-                    onSelect: (slug) => router.push(`/documents/${slug}`),
+                    onSelect: navigateToSlug,
                     selectedSlug,
                   })}
                 </Tree>
