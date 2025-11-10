@@ -5,7 +5,7 @@ import { getMarkdownFileBySlug } from "@/lib/markdown-files"
 
 type DocumentPageProps = {
   params: Promise<{
-    slug: string
+    slug: string[]
   }>
 }
 
@@ -18,7 +18,11 @@ export default async function DocumentDetailPage({ params }: DocumentPageProps) 
   }
 
   return (
-    <div className="flex max-w-4xl mx-auto h-full w-full">
+    <div className="mx-auto flex h-full w-full max-w-4xl flex-col gap-4 px-4 py-8">
+      <div>
+        <h1 className="text-2xl font-semibold">{file.filename}</h1>
+        <p className="text-sm text-muted-foreground">{file.relativePath}</p>
+      </div>
       <Tiptap content={file.content ?? ""} />
     </div>
   )

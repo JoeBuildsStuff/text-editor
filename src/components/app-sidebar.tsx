@@ -25,11 +25,93 @@ import { File as TreeFile, Folder, Tree, type TreeViewElement } from "@/componen
 type MarkdownFile = {
   filename: string
   relativePath: string
+  documentPath: string
   slug: string
   content?: string
 }
 
 const DOCUMENTS_ROOT_ID = "documents-root"
+
+type SidebarTreeElement = TreeViewElement & {
+  children?: SidebarTreeElement[]
+}
+
+function buildDocumentsTree(files: MarkdownFile[]): SidebarTreeElement[] {
+  if (!files.length) return []
+
+  const root: SidebarTreeElement = {
+    id: DOCUMENTS_ROOT_ID,
+    name: "documents",
+    isSelectable: true,
+    children: [],
+  }
+
+  files.forEach((file) => {
+    const segments = file.documentPath.split("/")
+    const filename = segments.pop()
+    if (!filename) return
+
+    let currentNode = root
+    const pathAccumulator: string[] = []
+
+    segments.forEach((segment) => {
+      pathAccumulator.push(segment)
+      const folderId = `${DOCUMENTS_ROOT_ID}/${pathAccumulator.join("/")}`
+      currentNode.children = currentNode.children ?? []
+      let folderNode = currentNode.children.find((child) => child.id === folderId)
+      if (!folderNode) {
+        folderNode = {
+          id: folderId,
+          name: segment,
+          isSelectable: true,
+          children: [],
+        }
+        currentNode.children.push(folderNode)
+      }
+      currentNode = folderNode
+    })
+
+    currentNode.children = currentNode.children ?? []
+    currentNode.children.push({
+      id: file.slug,
+      name: filename,
+      isSelectable: true,
+    })
+  })
+
+  return [root]
+}
+
+function renderTree(
+  elements: SidebarTreeElement[],
+  options: { onSelect: (slug: string) => void; selectedSlug?: string }
+) {
+  return elements.map((element) => {
+    if (element.children?.length) {
+      return (
+        <Folder
+          key={element.id}
+          value={element.id}
+          element={element.name}
+          isSelectable={element.isSelectable}
+        >
+          {renderTree(element.children, options)}
+        </Folder>
+      )
+    }
+
+    return (
+      <TreeFile
+        key={element.id}
+        value={element.id}
+        handleSelect={options.onSelect}
+        isSelect={options.selectedSlug === element.id}
+      >
+        <span>{element.name}</span>
+      </TreeFile>
+    )
+  })
+}
 
 export function AppSidebar() {
   const pathname = usePathname()
@@ -64,27 +146,10 @@ export function AppSidebar() {
     fetchFiles()
   }, [])
 
-  const treeElements = useMemo<TreeViewElement[]>(() => {
-    if (!markdownFiles.length) {
-      return []
-    }
-
-    return [
-      {
-        id: DOCUMENTS_ROOT_ID,
-        name: "documents",
-        isSelectable: false,
-        children: markdownFiles.map((file) => ({
-          id: file.slug,
-          name: file.filename,
-          isSelectable: true,
-        })),
-      },
-    ]
-  }, [markdownFiles])
+  const treeElements = useMemo(() => buildDocumentsTree(markdownFiles), [markdownFiles])
 
   const selectedSlug = pathname.startsWith("/documents/")
-    ? pathname.split("/")[2]
+    ? decodeURIComponent(pathname.replace(/^\/documents\/?/, "")) || undefined
     : undefined
 
   const navigationItems = [
@@ -144,26 +209,14 @@ export function AppSidebar() {
               {treeElements.length > 0 && (
                 <Tree
                   className=""
-                  elements={treeElements}
+                  elements={treeElements as TreeViewElement[]}
                   initialExpandedItems={[DOCUMENTS_ROOT_ID]}
                   initialSelectedId={selectedSlug}
                 >
-                  <Folder
-                    value={DOCUMENTS_ROOT_ID}
-                    element="documents"
-                    isSelectable={true}
-                  >
-                    {markdownFiles.map((file) => (
-                      <TreeFile
-                        key={file.slug}
-                        value={file.slug}
-                        handleSelect={(id) => router.push(`/documents/${id}`)}
-                        isSelect={selectedSlug === file.slug}
-                      >
-                        <span>{file.filename}</span>
-                      </TreeFile>
-                    ))}
-                  </Folder>
+                  {renderTree(treeElements, {
+                    onSelect: (slug) => router.push(`/documents/${slug}`),
+                    selectedSlug,
+                  })}
                 </Tree>
               )}
             </SidebarGroupContent>
