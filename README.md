@@ -52,3 +52,9 @@ Request body:
 - `filename` can be provided with or without the `.md` extension; invalid characters are stripped.
 - Files are written into `server/documents`. Attempting to save an existing file without `overwrite: true` returns `409`.
 - Successful responses include the normalized filename and the relative path where the file was stored.
+
+## Upcoming Enhancements
+
+- **Stable sidebar tree data** – eliminate the document tree flicker in `AppSidebar` by caching `/api/markdown` responses (React context/SWR/server component) instead of refetching on every navigation.
+- **Live metadata updates** – watch the `server/documents` directory and automatically re-sync `index.json` so manually added files appear instantly.
+- **Editor save integration** – wire the Tiptap editor to autosave document content back through the markdown API while preserving the UUID-based metadata.

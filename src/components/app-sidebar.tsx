@@ -1,5 +1,7 @@
 "use client"
 
+// TODO: The tree flickers because we refetch documents on every route change.
+//       Revisit this once we have a shared cache (see README).
 import { useEffect, useMemo, useState } from "react"
 
 import {
@@ -43,7 +45,8 @@ function buildDocumentsTree(files: MarkdownDocument[]): SidebarTreeElement[] {
   const root: SidebarTreeElement = {
     id: DOCUMENTS_ROOT_ID,
     name: "documents",
-    isSelectable: false,
+    // Must Remain true so that we can expand and colapse the node
+    isSelectable: true,
     children: [],
   }
 
@@ -64,7 +67,8 @@ function buildDocumentsTree(files: MarkdownDocument[]): SidebarTreeElement[] {
         folderNode = {
           id: folderId,
           name: segment,
-          isSelectable: false,
+          // Must Remain true so that we can select the node
+          isSelectable: true,
           children: [],
         }
         currentNode.children.push(folderNode)
@@ -163,6 +167,7 @@ export function AppSidebar() {
 
     fetchFiles()
     return () => controller.abort()
+    // NOTE: dependency on pathname causes refetch/flicker; replace with cached data later.
   }, [pathname])
 
   const treeElements = useMemo(() => buildDocumentsTree(documents), [documents])
