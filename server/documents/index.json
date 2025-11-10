@@ -5,5 +5,33 @@
     "documentPath": "notes.md",
     "createdAt": "2024-05-01T00:00:00.000Z",
     "updatedAt": "2024-05-01T00:00:00.000Z"
+  },
+  {
+    "id": "939f6e8a-c18d-4354-9da2-e8bf186c484c",
+    "title": "File 1",
+    "documentPath": "folder1/file1.md",
+    "createdAt": "2025-11-10T06:08:17.006Z",
+    "updatedAt": "2025-11-10T06:08:17.006Z"
+  },
+  {
+    "id": "af809254-3655-48d6-bb2f-f1573cf8c536",
+    "title": "File 2",
+    "documentPath": "folder1/subfolder/file2.md",
+    "createdAt": "2025-11-10T06:08:17.006Z",
+    "updatedAt": "2025-11-10T06:08:17.006Z"
+  },
+  {
+    "id": "fc71da83-0c10-4139-8e56-b8803dd18afc",
+    "title": "File 3",
+    "documentPath": "folder1/subfolder2/file3.md",
+    "createdAt": "2025-11-10T06:09:21.669Z",
+    "updatedAt": "2025-11-10T06:09:21.669Z"
+  },
+  {
+    "id": "7a5c82f5-858f-40df-806b-ab1fa2258dab",
+    "title": "File 4",
+    "documentPath": "folder1/subfolder2/nested/file4.md",
+    "createdAt": "2025-11-10T06:09:54.443Z",
+    "updatedAt": "2025-11-10T06:09:54.443Z"
   }
 ]

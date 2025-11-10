@@ -210,6 +210,36 @@ async function upsertRecordTitle(documentPath: string, title: string) {
   return newRecord
 }
 
+async function resolveDocumentPath(baseName: string) {
+  const filename = ensureMarkdownExtension(baseName)
+  const documentPath = toPosixPath(filename)
+  const absolutePath = path.join(MARKDOWN_DIR, documentPath)
+  return { documentPath, absolutePath }
+}
+
+async function findAvailableDocumentPath(baseName: string) {
+  let attempt = 0
+
+  while (attempt < 1000) {
+    const suffix = attempt === 0 ? "" : `-${attempt}`
+    const candidateBase = `${baseName}${suffix}`
+    const { documentPath, absolutePath } = await resolveDocumentPath(candidateBase)
+
+    try {
+      await access(absolutePath)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return { documentPath, absolutePath }
+      }
+      throw error
+    }
+
+    attempt += 1
+  }
+
+  throw new MarkdownFileOperationError("Unable to create a unique filename", 500)
+}
+
 export async function createMarkdownFile(titleInput: string, content: string, overwrite?: boolean) {
   const title = titleInput.trim()
   if (!title) {
@@ -221,25 +251,10 @@ export async function createMarkdownFile(titleInput: string, content: string, ov
     throw new MarkdownFileOperationError("Title must contain alphanumeric characters", 422)
   }
 
-  const filename = ensureMarkdownExtension(sanitizedBase)
-  const documentPath = toPosixPath(filename)
-  const absolutePath = path.join(MARKDOWN_DIR, documentPath)
-
   await ensureMarkdownDirectory()
-
-  if (!overwrite) {
-    try {
-      await access(absolutePath)
-      throw new MarkdownFileOperationError(
-        "File already exists. Pass overwrite=true to replace it.",
-        409
-      )
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-        throw error
-      }
-    }
-  }
+  const { documentPath, absolutePath } = overwrite
+    ? await resolveDocumentPath(sanitizedBase)
+    : await findAvailableDocumentPath(sanitizedBase)
 
   await writeFile(absolutePath, content ?? "", "utf-8")
   const record = await upsertRecordTitle(documentPath, title)
