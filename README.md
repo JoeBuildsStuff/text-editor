@@ -1,4 +1,57 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Text Editor
+
+A markdown-based text editor built with Next.js and Tiptap. Create, edit, and organize markdown documents with a rich editing experience.
+
+## What It Does
+
+This application provides a full-featured markdown editor where you can:
+
+- **Create and edit markdown documents** using a rich Tiptap editor with markdown support
+- **Organize documents in folders** with a hierarchical folder structure
+- **Edit document titles** inline - titles are stored separately from filenames
+- **View all documents** in a collapsible sidebar tree
+- **Delete documents** directly from the editor interface
+
+## How It Works
+
+### Document Storage
+
+- **Markdown files** are stored in `server/documents/` directory
+- **Metadata** (ID, title, paths, timestamps) is stored in `server/documents/index.json`
+- Each document has a **UUID-based ID** for stable references, even when filenames change
+- Documents can be organized in **nested folders** within the documents directory
+
+### Key Components
+
+1. **Tiptap Editor** (`src/components/tiptap/tiptap.tsx`)
+   - Rich markdown editor with formatting tools
+   - Supports headings, lists, code blocks, tables, links, images, and more
+   - Content is stored and edited as markdown
+
+2. **Document Title Editor** (`src/components/documents/document-title-editor.tsx`)
+   - Inline title editing component
+   - Automatically saves on blur or Enter key
+   - Updates both the metadata and filename when title changes
+
+3. **Sidebar** (`src/components/app-sidebar.tsx`)
+   - Displays a tree view of all documents organized by folders
+   - Auto-expands folders containing the currently selected document
+   - Allows creating new documents and folders
+   - Note: Creating a folder through the UI creates a blank document inside it (the UI doesn't support creating empty folders)
+
+4. **Markdown API** (`src/app/api/markdown/route.ts`)
+   - `GET` - List all documents (without content by default)
+   - `POST` - Create a new document
+   - `PATCH` - Rename a document (updates title and filename)
+   - `DELETE` - Delete a document
+
+### Document Management
+
+- **File synchronization**: The system automatically syncs `index.json` with the filesystem, so manually added files are detected
+- **Title vs Filename**: Document titles (display names) are stored separately from filenames, allowing user-friendly titles while maintaining valid filenames
+- **Slug-based routing**: Documents are accessed via `/documents/[id]` where `id` is the document's UUID slug
+- **Folder creation**: Creating a folder from the sidebar creates a blank document (titled "untititled") inside that folder. The UI doesn't support creating empty folders - folders are created implicitly when documents are placed in them.
+- **Folder deletion**: When deleting a document, only the file is removed. Empty folders are not automatically cleaned up and will remain on the filesystem even after all their documents are deleted.
 
 ## Getting Started
 
@@ -16,42 +69,56 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## API Reference
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### POST `/api/markdown`
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-
-## Markdown Storage API
-
-POST `/api/markdown`
+Create a new markdown document.
 
 Request body:
 
 ```json
 {
-  "filename": "daily-notes",
+  "title": "My Document",
   "content": "# Heading\nYour markdown body",
+  "folderPath": "optional/folder/path",
   "overwrite": false
 }
 ```
 
-- `filename` can be provided with or without the `.md` extension; invalid characters are stripped.
-- Files are written into `server/documents`. Attempting to save an existing file without `overwrite: true` returns `409`.
-- Successful responses include the normalized filename and the relative path where the file was stored.
+- `title` (required) - Display title for the document
+- `content` (optional) - Markdown content, defaults to empty string
+- `folderPath` (optional) - Folder path where document should be created
+- `overwrite` (optional) - If true, overwrites existing file with same name
+
+### GET `/api/markdown`
+
+List all documents. Returns an array of document metadata (without content by default).
+
+### PATCH `/api/markdown`
+
+Rename a document.
+
+Request body:
+
+```json
+{
+  "id": "uuid-of-document",
+  "title": "New Title"
+}
+```
+
+### DELETE `/api/markdown`
+
+Delete a document.
+
+Request body:
+
+```json
+{
+  "id": "uuid-of-document"
+}
+```
 
 ## Upcoming Enhancements
 
