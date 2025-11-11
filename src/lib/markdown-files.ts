@@ -7,12 +7,31 @@ const METADATA_PATH = path.join(MARKDOWN_DIR, "index.json")
 
 const MARKDOWN_EXTENSION = /\.md$/i
 
-export type DocumentRecord = {
+type BaseRecord = {
   id: string
-  title: string
-  documentPath: string
   createdAt: string
   updatedAt: string
+}
+
+export type DocumentRecord = BaseRecord & {
+  kind: "document"
+  title: string
+  documentPath: string
+}
+
+export type FolderRecord = BaseRecord & {
+  kind: "folder"
+  folderPath: string
+}
+
+export type MetadataRecord = DocumentRecord | FolderRecord
+
+export function isDocumentRecord(record: MetadataRecord): record is DocumentRecord {
+  return record.kind === "document"
+}
+
+export function isFolderRecord(record: MetadataRecord): record is FolderRecord {
+  return record.kind === "folder"
 }
 
 export type MarkdownFileMeta = DocumentRecord & {
@@ -36,6 +55,17 @@ export function sanitizeFilename(input?: string | null) {
   return safe.replace(/-+/g, "-").replace(/^-|-$/g, "")
 }
 
+function sanitizeFolderSegments(input?: string | null) {
+  return (input ?? "")
+    .split("/")
+    .map((segment) => sanitizeFilename(segment))
+    .filter((segment) => segment.length > 0)
+}
+
+function sanitizeFolderPath(input?: string | null) {
+  return sanitizeFolderSegments(input).join("/")
+}
+
 export function stripMarkdownExtension(input: string) {
   return input.replace(MARKDOWN_EXTENSION, "")
 }
@@ -57,31 +87,108 @@ async function ensureMetadataFile() {
   }
 }
 
-async function readMetadata(): Promise<DocumentRecord[]> {
+function isValidIsoString(value: unknown): value is string {
+  if (typeof value !== "string") return false
+  const date = new Date(value)
+  return !Number.isNaN(date.valueOf())
+}
+
+function toIsoStringOrNow(value: unknown) {
+  if (isValidIsoString(value)) return value
+  return new Date().toISOString()
+}
+
+function normalizeRecord(candidate: unknown): MetadataRecord | null {
+  if (!candidate || typeof candidate !== "object") return null
+
+  const record = candidate as Record<string, unknown>
+
+  const idValue = record.id
+  if (typeof idValue !== "string" || idValue.length === 0) {
+    return null
+  }
+
+  const timestamps = {
+    createdAt: toIsoStringOrNow(record.createdAt),
+    updatedAt: toIsoStringOrNow(record.updatedAt),
+  }
+
+  const kindValue = record.kind
+
+  if (kindValue === "folder") {
+    const folderPathValue = record.folderPath
+    if (typeof folderPathValue !== "string" || folderPathValue.length === 0) {
+      return null
+    }
+    return {
+      id: idValue,
+      kind: "folder",
+      folderPath: folderPathValue,
+      ...timestamps,
+    }
+  }
+
+  const documentPathValue = record.documentPath
+  if (typeof documentPathValue !== "string" || documentPathValue.length === 0) {
+    return null
+  }
+
+  const titleValue = typeof record.title === "string" ? record.title : ""
+
+  return {
+    id: idValue,
+    kind: "document",
+    title: titleValue,
+    documentPath: documentPathValue,
+    ...timestamps,
+  }
+}
+
+async function readMetadata(): Promise<MetadataRecord[]> {
   await ensureMetadataFile()
   const data = await readFile(METADATA_PATH, "utf-8")
   try {
     const parsed = JSON.parse(data)
-    return Array.isArray(parsed) ? (parsed as DocumentRecord[]) : []
+    if (!Array.isArray(parsed)) return []
+    const records: MetadataRecord[] = []
+    for (const candidate of parsed) {
+      const normalized = normalizeRecord(candidate)
+      if (normalized) {
+        records.push(normalized)
+      }
+    }
+    return records
   } catch {
     return []
   }
 }
 
-async function writeMetadata(records: DocumentRecord[]) {
+async function writeMetadata(records: MetadataRecord[]) {
   await ensureMetadataFile()
   await writeFile(METADATA_PATH, JSON.stringify(records, null, 2), "utf-8")
 }
 
-async function walkDocumentPaths(currentDir = MARKDOWN_DIR, base = ""): Promise<string[]> {
+type WalkResult = {
+  documents: string[]
+  folders: string[]
+}
+
+async function walkDocumentsAndFolders(
+  currentDir = MARKDOWN_DIR,
+  base = ""
+): Promise<WalkResult> {
   const entries = await readdir(currentDir, { withFileTypes: true })
-  const files: string[] = []
+  const aggregated: WalkResult = { documents: [], folders: [] }
 
   for (const entry of entries) {
     const entryPath = path.join(currentDir, entry.name)
     if (entry.isDirectory()) {
-      const nextBase = base ? `${base}/${entry.name}` : entry.name
-      files.push(...(await walkDocumentPaths(entryPath, nextBase)))
+      const folderPath = base ? `${base}/${entry.name}` : entry.name
+      const normalizedFolder = toPosixPath(folderPath)
+      aggregated.folders.push(normalizedFolder)
+      const nested = await walkDocumentsAndFolders(entryPath, folderPath)
+      aggregated.documents.push(...nested.documents)
+      aggregated.folders.push(...nested.folders)
       continue
     }
 
@@ -90,19 +197,22 @@ async function walkDocumentPaths(currentDir = MARKDOWN_DIR, base = ""): Promise<
     }
 
     const documentPath = base ? `${base}/${entry.name}` : entry.name
-    files.push(toPosixPath(documentPath))
+    aggregated.documents.push(toPosixPath(documentPath))
   }
 
-  return files
+  return aggregated
 }
 
 async function syncMetadataWithFilesystem() {
   const metadata = await readMetadata()
-  const filePaths = await walkDocumentPaths()
+  const documentRecords = metadata.filter(isDocumentRecord)
+  const folderRecords = metadata.filter(isFolderRecord)
+  const { documents: filePaths, folders: folderPaths } = await walkDocumentsAndFolders()
   const filePathSet = new Set(filePaths)
+  const folderPathSet = new Set(folderPaths)
   let changed = false
 
-  const validRecords: DocumentRecord[] = metadata.filter((record) => {
+  const validDocuments: DocumentRecord[] = documentRecords.filter((record) => {
     const exists = filePathSet.has(record.documentPath)
     if (!exists) {
       changed = true
@@ -110,13 +220,14 @@ async function syncMetadataWithFilesystem() {
     return exists
   })
 
-  const existingPaths = new Set(validRecords.map((record) => record.documentPath))
+  const existingPaths = new Set(validDocuments.map((record) => record.documentPath))
 
   for (const documentPath of filePaths) {
     if (existingPaths.has(documentPath)) continue
     const timestamp = new Date().toISOString()
-    validRecords.push({
+    validDocuments.push({
       id: randomUUID(),
+      kind: "document",
       title: stripMarkdownExtension(path.basename(documentPath)),
       documentPath,
       createdAt: timestamp,
@@ -125,11 +236,36 @@ async function syncMetadataWithFilesystem() {
     changed = true
   }
 
-  if (changed) {
-    await writeMetadata(validRecords)
+  const validFolders: FolderRecord[] = folderRecords.filter((record) => {
+    const exists = folderPathSet.has(record.folderPath)
+    if (!exists) {
+      changed = true
+    }
+    return exists
+  })
+
+  const existingFolderPaths = new Set(validFolders.map((record) => record.folderPath))
+
+  for (const folderPath of folderPaths) {
+    if (existingFolderPaths.has(folderPath)) continue
+    const timestamp = new Date().toISOString()
+    validFolders.push({
+      id: randomUUID(),
+      kind: "folder",
+      folderPath,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    })
+    changed = true
   }
 
-  return validRecords
+  if (changed) {
+    const nextRecords: MetadataRecord[] = [...validDocuments, ...validFolders]
+    await writeMetadata(nextRecords)
+    return nextRecords
+  }
+
+  return [...validDocuments, ...validFolders]
 }
 
 function buildRelativePath(documentPath: string) {
@@ -167,16 +303,33 @@ type ListOptions = {
 }
 
 export async function listMarkdownFiles({ includeContent = true }: ListOptions = {}) {
-  const records = await syncMetadataWithFilesystem()
-  return Promise.all(records.map((record) => documentRecordToMeta(record, includeContent)))
+  const { documents } = await listMarkdownItems({ includeContent })
+  return documents
 }
 
 export async function getMarkdownFileById(id?: string | null) {
   if (!id) return undefined
   const records = await syncMetadataWithFilesystem()
-  const record = records.find((candidate) => candidate.id === id)
+  const record = records.find(
+    (candidate): candidate is DocumentRecord =>
+      isDocumentRecord(candidate) && candidate.id === id
+  )
   if (!record) return undefined
   return documentRecordToMeta(record, true)
+}
+
+export async function listMarkdownItems({ includeContent = true }: ListOptions = {}) {
+  const records = await syncMetadataWithFilesystem()
+  const documentRecords = records.filter(isDocumentRecord)
+  const folderRecords = records.filter(isFolderRecord)
+  const documents = await Promise.all(
+    documentRecords.map((record) => documentRecordToMeta(record, includeContent))
+  )
+
+  return {
+    documents,
+    folders: folderRecords,
+  }
 }
 
 export class MarkdownFileOperationError extends Error {
@@ -188,25 +341,29 @@ export class MarkdownFileOperationError extends Error {
 
 async function upsertRecordTitle(documentPath: string, title: string) {
   const records = await syncMetadataWithFilesystem()
-  const index = records.findIndex((record) => record.documentPath === documentPath)
+  const documents = records.filter(isDocumentRecord)
+  const folders = records.filter(isFolderRecord)
+  const index = documents.findIndex((record) => record.documentPath === documentPath)
   const timestamp = new Date().toISOString()
 
   if (index >= 0) {
-    records[index] = { ...records[index], title, updatedAt: timestamp }
-    await writeMetadata(records)
-    return records[index]
+    const updatedRecord = { ...documents[index], title, updatedAt: timestamp }
+    documents[index] = updatedRecord
+    await writeMetadata([...documents, ...folders])
+    return updatedRecord
   }
 
   const newRecord: DocumentRecord = {
     id: randomUUID(),
+    kind: "document",
     title,
     documentPath,
     createdAt: timestamp,
     updatedAt: timestamp,
   }
 
-  records.push(newRecord)
-  await writeMetadata(records)
+  documents.push(newRecord)
+  await writeMetadata([...documents, ...folders])
   return newRecord
 }
 
@@ -263,12 +420,8 @@ export async function createMarkdownFile(
 
   if (folderPath) {
     // Create file in specified folder
-    const sanitizedFolderPath = folderPath
-      .split("/")
-      .map((segment) => sanitizeFilename(segment))
-      .filter(Boolean)
-      .join("/")
-    
+    const sanitizedFolderPath = sanitizeFolderPath(folderPath)
+
     if (!sanitizedFolderPath) {
       throw new MarkdownFileOperationError("Invalid folder path", 422)
     }
@@ -324,6 +477,65 @@ export async function createMarkdownFile(
   return documentRecordToMeta(record, false)
 }
 
+export async function createFolder(folderPathInput: string) {
+  const segments = sanitizeFolderSegments(folderPathInput)
+  if (!segments.length) {
+    throw new MarkdownFileOperationError("Folder name must contain alphanumeric characters", 422)
+  }
+
+  await ensureMarkdownDirectory()
+
+  const parentSegments = segments.slice(0, -1)
+  const baseName = segments[segments.length - 1]
+  const parentRelativePath = parentSegments.join("/")
+
+  if (parentRelativePath.length > 0) {
+    const parentAbsolutePath = path.join(MARKDOWN_DIR, parentRelativePath)
+    await mkdir(parentAbsolutePath, { recursive: true })
+  }
+
+  let folderRelativePath = ""
+  let attempt = 0
+
+  while (attempt < 1000) {
+    const suffix = attempt === 0 ? "" : `-${attempt}`
+    const candidateName = `${baseName}${suffix}`
+    const candidateRelativePath = parentRelativePath
+      ? `${parentRelativePath}/${candidateName}`
+      : candidateName
+    const candidateAbsolutePath = path.join(MARKDOWN_DIR, candidateRelativePath)
+
+    try {
+      await mkdir(candidateAbsolutePath, { recursive: false })
+      folderRelativePath = toPosixPath(candidateRelativePath)
+      break
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (code === "EEXIST") {
+        attempt += 1
+        continue
+      }
+      throw error
+    }
+  }
+
+  if (!folderRelativePath) {
+    throw new MarkdownFileOperationError("Unable to create a unique folder name", 500)
+  }
+
+  const records = await syncMetadataWithFilesystem()
+  const folderRecord = records.find(
+    (candidate): candidate is FolderRecord =>
+      isFolderRecord(candidate) && candidate.folderPath === folderRelativePath
+  )
+
+  if (!folderRecord) {
+    throw new MarkdownFileOperationError("Failed to create folder metadata", 500)
+  }
+
+  return folderRecord
+}
+
 export async function renameMarkdownFile(id: string, proposedTitle: string) {
   const title = proposedTitle.trim()
   if (!title) {
@@ -331,12 +543,14 @@ export async function renameMarkdownFile(id: string, proposedTitle: string) {
   }
 
   const records = await syncMetadataWithFilesystem()
-  const index = records.findIndex((record) => record.id === id)
+  const documents = records.filter(isDocumentRecord)
+  const folders = records.filter(isFolderRecord)
+  const index = documents.findIndex((record) => record.id === id)
   if (index === -1) {
     throw new MarkdownFileOperationError("Document not found", 404)
   }
 
-  const record = records[index]
+  const record = documents[index]
   const sanitizedBase = sanitizeFilename(title)
   if (!sanitizedBase) {
     throw new MarkdownFileOperationError("Title must contain alphanumeric characters", 422)
@@ -372,27 +586,29 @@ export async function renameMarkdownFile(id: string, proposedTitle: string) {
     updatedAt: timestamp,
   }
 
-  records[index] = updatedRecord
-  await writeMetadata(records)
+  documents[index] = updatedRecord
+  await writeMetadata([...documents, ...folders])
 
   return documentRecordToMeta(updatedRecord, false)
 }
 
 export async function deleteMarkdownFile(id: string) {
   const records = await syncMetadataWithFilesystem()
-  const index = records.findIndex((record) => record.id === id)
+  const documents = records.filter(isDocumentRecord)
+  const folders = records.filter(isFolderRecord)
+  const index = documents.findIndex((record) => record.id === id)
 
   if (index === -1) {
     throw new MarkdownFileOperationError("Document not found", 404)
   }
 
-  const record = records[index]
+  const record = documents[index]
   const absolutePath = path.join(MARKDOWN_DIR, record.documentPath)
 
   await rm(absolutePath, { force: true })
 
-  records.splice(index, 1)
-  await writeMetadata(records)
+  documents.splice(index, 1)
+  await writeMetadata([...documents, ...folders])
 
   return documentRecordToMeta(record, false)
 }

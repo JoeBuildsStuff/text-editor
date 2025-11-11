@@ -17,9 +17,9 @@ This application provides a full-featured markdown editor where you can:
 ### Document Storage
 
 - **Markdown files** are stored in `server/documents/` directory
-- **Metadata** (ID, title, paths, timestamps) is stored in `server/documents/index.json`
+- **Metadata** (ID, kind, paths, timestamps, and titles) is stored in `server/documents/index.json`
 - Each document has a **UUID-based ID** for stable references, even when filenames change
-- Documents can be organized in **nested folders** within the documents directory
+- Documents and folders can be organized in **nested folders** within the documents directory
 
 ### Key Components
 
@@ -36,12 +36,11 @@ This application provides a full-featured markdown editor where you can:
 3. **Sidebar** (`src/components/app-sidebar.tsx`)
    - Displays a tree view of all documents organized by folders
    - Auto-expands folders containing the currently selected document
-   - Allows creating new documents and folders
-   - Note: Creating a folder through the UI creates a blank document inside it (the UI doesn't support creating empty folders)
+   - Allows creating new documents and folders (including empty folders)
 
 4. **Markdown API** (`src/app/api/markdown/route.ts`)
    - `GET` - List all documents (without content by default)
-   - `POST` - Create a new document
+   - `POST` - Create a new document or folder
    - `PATCH` - Rename a document (updates title and filename)
    - `DELETE` - Delete a document
 
@@ -50,7 +49,7 @@ This application provides a full-featured markdown editor where you can:
 - **File synchronization**: The system automatically syncs `index.json` with the filesystem, so manually added files are detected
 - **Title vs Filename**: Document titles (display names) are stored separately from filenames, allowing user-friendly titles while maintaining valid filenames
 - **Slug-based routing**: Documents are accessed via `/documents/[id]` where `id` is the document's UUID slug
-- **Folder creation**: Creating a folder from the sidebar creates a blank document (titled "untititled") inside that folder. The UI doesn't support creating empty folders - folders are created implicitly when documents are placed in them.
+- **Folder creation**: Folders are stored as first-class metadata entries. You can create empty folders from the UI or API, and add documents to them later.
 - **Folder deletion**: When deleting a document, only the file is removed. Empty folders are not automatically cleaned up and will remain on the filesystem even after all their documents are deleted.
 
 ## Getting Started
@@ -73,12 +72,13 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 ### POST `/api/markdown`
 
-Create a new markdown document.
+Create a new markdown document or folder.
 
-Request body:
+**Document request**
 
 ```json
 {
+  "type": "document",
   "title": "My Document",
   "content": "# Heading\nYour markdown body",
   "folderPath": "optional/folder/path",
@@ -86,14 +86,30 @@ Request body:
 }
 ```
 
-- `title` (required) - Display title for the document
+- `type` (optional) - Defaults to `"document"`. Set explicitly for clarity.
+- `title` (required when `type` is `"document"`) - Display title for the document
 - `content` (optional) - Markdown content, defaults to empty string
-- `folderPath` (optional) - Folder path where document should be created
-- `overwrite` (optional) - If true, overwrites existing file with same name
+- `folderPath` (optional) - Folder path where the document should be created
+- `overwrite` (optional) - If true, overwrites an existing file with the same name
+
+**Folder request**
+
+```json
+{
+  "type": "folder",
+  "folderPath": "parent/new-folder"
+}
+```
+
+- `type` must be `"folder"`
+- `folderPath` (required) - Path for the folder. Each segment is sanitized; the final segment is used as the new folder's name. A numeric suffix is appended automatically if the folder already exists.
 
 ### GET `/api/markdown`
 
-List all documents. Returns an array of document metadata (without content by default).
+List all documents and folders. Returns an object with:
+
+- `documents` - Array of document metadata (without content by default)
+- `folders` - Array of folder metadata (`id`, `folderPath`, timestamps)
 
 ### PATCH `/api/markdown`
 

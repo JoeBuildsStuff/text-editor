@@ -29,7 +29,6 @@ import { ChevronRight, Ellipsis, File as FileIcon, FilePlus, Folder as FolderIco
 import { SidebarLogo } from "@/components/app-sidebar-logo"
 import { usePathname, useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
-import Link from "next/link"
 
 import { type TreeViewElement } from "@/components/ui/file-tree"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -43,15 +42,23 @@ type MarkdownDocument = {
   slug: string
 }
 
+type MarkdownFolder = {
+  id: string
+  folderPath: string
+  createdAt: string
+  updatedAt: string
+}
+
 const DOCUMENTS_ROOT_ID = "documents-root"
 
 type SidebarTreeElement = TreeViewElement & {
   children?: SidebarTreeElement[]
 }
 
-function buildDocumentsTree(files: MarkdownDocument[]): SidebarTreeElement[] {
-  if (!files.length) return []
-
+function buildDocumentsTree(
+  files: MarkdownDocument[],
+  folders: MarkdownFolder[]
+): SidebarTreeElement[] {
   const root: SidebarTreeElement = {
     id: DOCUMENTS_ROOT_ID,
     name: "documents",
@@ -60,15 +67,19 @@ function buildDocumentsTree(files: MarkdownDocument[]): SidebarTreeElement[] {
     children: [],
   }
 
-  files.forEach((file) => {
-    const segments = file.documentPath.split("/")
-    const filename = segments.pop()
-    if (!filename) return
-
+  const ensureFolderNode = (pathSegments: string[]): SidebarTreeElement => {
     let currentNode = root
+    if (!currentNode.children) {
+      currentNode.children = []
+    }
+
+    if (pathSegments.length === 0) {
+      return currentNode
+    }
+
     const pathAccumulator: string[] = []
 
-    segments.forEach((segment) => {
+    pathSegments.forEach((segment) => {
       pathAccumulator.push(segment)
       const folderId = `${DOCUMENTS_ROOT_ID}/${pathAccumulator.join("/")}`
       currentNode.children = currentNode.children ?? []
@@ -86,10 +97,24 @@ function buildDocumentsTree(files: MarkdownDocument[]): SidebarTreeElement[] {
       currentNode = folderNode
     })
 
-    currentNode.children = currentNode.children ?? []
+    return currentNode
+  }
+
+  folders.forEach((folder) => {
+    const segments = folder.folderPath.split("/").filter(Boolean)
+    ensureFolderNode(segments)
+  })
+
+  files.forEach((file) => {
+    const segments = file.documentPath.split("/")
+    const filename = segments.pop()
+    if (!filename) return
+
+    const parentNode = ensureFolderNode(segments.filter(Boolean))
+    parentNode.children = parentNode.children ?? []
     const displayName = file.title?.trim().length ? file.title : filename.replace(MARKDOWN_EXTENSION, "")
 
-    currentNode.children.push({
+    parentNode.children.push({
       id: file.slug,
       name: displayName,
       isSelectable: true,
@@ -110,7 +135,7 @@ function renderCollapsibleTree(
   }
 ) {
   return elements.map((element) => {
-    if (element.children?.length) {
+    if (element.children) {
       // This is a folder
       const isOpen = options.openFolders.has(element.id)
       return (
@@ -184,6 +209,7 @@ export function AppSidebar() {
   const pathname = usePathname()
   const router = useRouter()
   const [documents, setDocuments] = useState<MarkdownDocument[]>([])
+  const [folders, setFolders] = useState<MarkdownFolder[]>([])
   const [isLoadingFiles, setIsLoadingFiles] = useState(true)
   const [filesError, setFilesError] = useState<string | null>(null)
   const [createError, setCreateError] = useState<string | null>(null)
@@ -217,7 +243,18 @@ export function AppSidebar() {
           )
         })
 
+        const rawFolders = Array.isArray(data.folders) ? data.folders : []
+        const parsedFolders = rawFolders.filter((folder: Partial<MarkdownFolder>): folder is MarkdownFolder => {
+          return (
+            typeof folder?.id === "string" &&
+            typeof folder?.folderPath === "string" &&
+            typeof folder?.createdAt === "string" &&
+            typeof folder?.updatedAt === "string"
+          )
+        })
+
         setDocuments(parsedDocuments)
+        setFolders(parsedFolders)
       } catch (error) {
         if ((error as DOMException)?.name === "AbortError") {
           return
@@ -234,7 +271,10 @@ export function AppSidebar() {
     // NOTE: dependency on pathname causes refetch/flicker; replace with cached data later.
   }, [pathname])
 
-  const treeElements = useMemo(() => buildDocumentsTree(documents), [documents])
+  const treeElements = useMemo(
+    () => buildDocumentsTree(documents, folders),
+    [documents, folders]
+  )
 
   const selectedSlug = useMemo(() => {
     if (!pathname.startsWith("/documents")) return undefined
@@ -299,14 +339,6 @@ export function AppSidebar() {
     }
   }, [selectedSlug, treeElements])
 
-  const navigationItems = [
-    {
-      label: "New document",
-      href: "/documents",
-      icon: FileIcon,
-    },
-  ]
-
   const handleCreateDocument = () => {
     if (isCreating) return
 
@@ -351,17 +383,15 @@ export function AppSidebar() {
     startCreateTransition(async () => {
       try {
         setCreateError(null)
-        // Create a folder by creating a document inside a new folder
-        // The folder name will be sanitized and made unique if needed
         const folderName = "untitled-folder"
         const response = await fetch("/api/markdown", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ 
-            title: "untititled",
-            folderPath: folderName
+          body: JSON.stringify({
+            type: "folder",
+            folderPath: folderName,
           }),
         })
 
@@ -371,23 +401,38 @@ export function AppSidebar() {
         }
 
         const data = await response.json()
-        const document = data.document
-        if (!document) {
-          throw new Error("Missing document payload")
+        const folder = data.folder as Partial<MarkdownFolder> | undefined
+        if (
+          !folder ||
+          typeof folder.id !== "string" ||
+          typeof folder.folderPath !== "string" ||
+          typeof folder.createdAt !== "string" ||
+          typeof folder.updatedAt !== "string"
+        ) {
+          throw new Error("Missing folder payload")
         }
 
-        // Extract folder path from document path
-        const folderPath = document.documentPath.split("/").slice(0, -1).join("/")
+        setFolders((prev) => {
+          const exists = prev.some((existing) => existing.id === folder.id)
+          if (exists) {
+            return prev
+          }
+          return [...prev, folder as MarkdownFolder]
+        })
+
+        const folderPath = folder.folderPath
         if (folderPath) {
-          // Open the folder in the sidebar
-          const folderId = `${DOCUMENTS_ROOT_ID}/${folderPath}`
-          setOpenFolders((prev) => new Set(prev).add(folderId))
-        }
-
-        // Navigate to the new document
-        const slug = document.slug ?? document.id
-        if (slug) {
-          navigateToSlug(slug)
+          const segments = folderPath.split("/").filter(Boolean)
+          if (segments.length > 0) {
+            setOpenFolders((prev) => {
+              const next = new Set(prev)
+              segments.forEach((_, index) => {
+                const partialPath = segments.slice(0, index + 1).join("/")
+                next.add(`${DOCUMENTS_ROOT_ID}/${partialPath}`)
+              })
+              return next
+            })
+          }
         }
       } catch (error) {
         setCreateError(error instanceof Error ? error.message : "Unable to create folder")
@@ -436,6 +481,9 @@ export function AppSidebar() {
               {isLoadingFiles && <p className="text-xs text-muted-foreground">Loading files…</p>}
               {filesError && !isLoadingFiles && (
                 <p className="text-xs text-destructive">{filesError}</p>
+              )}
+              {createError && !isLoadingFiles && (
+                <p className="text-xs text-destructive">{createError}</p>
               )}
               {!isLoadingFiles && !filesError && treeElements.length > 0 && (
                 <SidebarMenu>

@@ -2,24 +2,38 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import {
+  createFolder,
   createMarkdownFile,
   deleteMarkdownFile,
+  listMarkdownItems,
   MarkdownFileOperationError,
-  listMarkdownFiles,
   renameMarkdownFile,
 } from "@/lib/markdown-files";
 
 const payloadSchema = z
   .object({
+    type: z.enum(["document", "folder"]).default("document"),
     filename: z.string().min(1).max(128).optional(),
     title: z.string().min(1).max(128).optional(),
     content: z.string().default(""),
     overwrite: z.boolean().optional(),
     folderPath: z.string().max(256).optional(),
   })
-  .refine((data) => Boolean(data.title ?? data.filename), {
-    message: "Title is required",
-    path: ["title"],
+  .superRefine((data, ctx) => {
+    if (data.type === "document" && !(data.title ?? data.filename)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Title is required",
+        path: ["title"],
+      });
+    }
+    if (data.type === "folder" && !data.folderPath) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Folder path is required",
+        path: ["folderPath"],
+      });
+    }
   });
 
 const renameSchema = z.object({
@@ -43,6 +57,11 @@ export async function POST(request: Request) {
   }
 
   try {
+    if (payload.type === "folder") {
+      const folder = await createFolder(payload.folderPath as string);
+      return NextResponse.json({ folder }, { status: 201 });
+    }
+
     const title = (payload.title ?? payload.filename) as string;
     const document = await createMarkdownFile(
       title,
@@ -68,9 +87,9 @@ export async function POST(request: Request) {
 
 export async function GET() {
   try {
-    const documents = await listMarkdownFiles({ includeContent: false });
+    const { documents, folders } = await listMarkdownItems({ includeContent: false });
 
-    return NextResponse.json({ documents });
+    return NextResponse.json({ documents, folders });
   } catch (error) {
     console.error("Failed to read markdown files", error);
     return NextResponse.json({ error: "Failed to read markdown files" }, { status: 500 });
