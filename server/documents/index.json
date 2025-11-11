@@ -1,24 +1,10 @@
 [
   {
-    "id": "a3908aa9-acad-459a-a2d1-1deedfeebf08",
+    "id": "267286cb-5585-4e6e-846c-be955ee252fa",
     "kind": "document",
     "title": "untititled",
     "documentPath": "untititled.md",
-    "createdAt": "2025-11-11T22:57:57.284Z",
-    "updatedAt": "2025-11-11T22:57:57.286Z"
-  },
-  {
-    "id": "4bba5364-4e54-4cdc-9b5c-e3c9025893d5",
-    "kind": "folder",
-    "folderPath": "untitled-folder",
-    "createdAt": "2025-11-11T22:47:29.191Z",
-    "updatedAt": "2025-11-11T22:47:29.191Z"
-  },
-  {
-    "id": "9b3dbc70-f30b-488c-9e9e-4c406cd5cb93",
-    "kind": "folder",
-    "folderPath": "untitled-folder-1",
-    "createdAt": "2025-11-11T22:58:05.817Z",
-    "updatedAt": "2025-11-11T22:58:05.817Z"
+    "createdAt": "2025-11-11T23:48:47.636Z",
+    "updatedAt": "2025-11-11T23:48:47.637Z"
   }
 ]

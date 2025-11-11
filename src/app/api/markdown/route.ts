@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   createFolder,
   createMarkdownFile,
+  deleteFolder,
   deleteMarkdownFile,
   listMarkdownItems,
   MarkdownFileOperationError,
@@ -41,9 +42,16 @@ const renameSchema = z.object({
   title: z.string().min(1, "Title is required").max(128, "Title is too long"),
 });
 
-const deleteSchema = z.object({
-  id: z.string().uuid(),
-});
+const deleteSchema = z.union([
+  z.object({
+    type: z.literal("folder"),
+    folderPath: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("document").optional(),
+    id: z.string().uuid(),
+  }),
+]);
 
 export async function POST(request: Request) {
   let payload: z.infer<typeof payloadSchema>;
@@ -120,6 +128,11 @@ export async function DELETE(request: Request) {
   try {
     const data = await request.json();
     const payload = deleteSchema.parse(data);
+    if ("folderPath" in payload) {
+      const folderPath = await deleteFolder(payload.folderPath);
+      return NextResponse.json({ folderPath });
+    }
+
     const document = await deleteMarkdownFile(payload.id);
 
     return NextResponse.json({ document });

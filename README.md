@@ -36,13 +36,14 @@ This application provides a full-featured markdown editor where you can:
 3. **Sidebar** (`src/components/app-sidebar.tsx`)
    - Displays a tree view of all documents organized by folders
    - Auto-expands folders containing the currently selected document
-   - Allows creating new documents and folders (including empty folders)
+   - Allows creating new documents and folders (including empty folders) via buttons or context menus
+   - Right-click any folder or document to open contextual actions (create, delete) with toast feedback
 
 4. **Markdown API** (`src/app/api/markdown/route.ts`)
    - `GET` - List all documents (without content by default)
    - `POST` - Create a new document or folder
    - `PATCH` - Rename a document (updates title and filename)
-   - `DELETE` - Delete a document
+   - `DELETE` - Delete a document or folder
 
 ### Document Management
 
@@ -50,7 +51,7 @@ This application provides a full-featured markdown editor where you can:
 - **Title vs Filename**: Document titles (display names) are stored separately from filenames, allowing user-friendly titles while maintaining valid filenames
 - **Slug-based routing**: Documents are accessed via `/documents/[id]` where `id` is the document's UUID slug
 - **Folder creation**: Folders are stored as first-class metadata entries. You can create empty folders from the UI or API, and add documents to them later.
-- **Folder deletion**: When deleting a document, only the file is removed. Empty folders are not automatically cleaned up and will remain on the filesystem even after all their documents are deleted.
+- **Folder deletion**: Folders can be deleted from the UI or API. Deleting a folder recursively removes all nested folders and documents and updates the metadata index automatically.
 
 ## Getting Started
 
@@ -126,15 +127,29 @@ Request body:
 
 ### DELETE `/api/markdown`
 
-Delete a document.
+Delete a document or folder.
 
-Request body:
+**Document request**
 
 ```json
 {
   "id": "uuid-of-document"
 }
 ```
+
+- `id` (required) – UUID of the document to delete
+
+**Folder request**
+
+```json
+{
+  "type": "folder",
+  "folderPath": "path/to/folder"
+}
+```
+
+- `type` must be `"folder"`
+- `folderPath` (required) – Relative folder path (using `/` separators). The folder and all nested contents are deleted recursively.
 
 ## Upcoming Enhancements
 

@@ -612,3 +612,35 @@ export async function deleteMarkdownFile(id: string) {
 
   return documentRecordToMeta(record, false)
 }
+
+export async function deleteFolder(folderPathInput: string) {
+  const sanitized = sanitizeFolderPath(folderPathInput)
+  if (!sanitized) {
+    throw new MarkdownFileOperationError("Invalid folder path", 422)
+  }
+
+  const absolutePath = path.join(MARKDOWN_DIR, sanitized)
+  try {
+    await rm(absolutePath, { recursive: true, force: true })
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code
+    if (code === "ENOENT") {
+      throw new MarkdownFileOperationError("Folder not found", 404)
+    }
+    throw error
+  }
+
+  const records = await readMetadata()
+  const remainingRecords = records.filter((record) => {
+    if (isDocumentRecord(record)) {
+      return !record.documentPath.startsWith(`${sanitized}/`) && record.documentPath !== sanitized
+    }
+    if (isFolderRecord(record)) {
+      return record.folderPath !== sanitized && !record.folderPath.startsWith(`${sanitized}/`)
+    }
+    return true
+  })
+
+  await writeMetadata(remainingRecords)
+  return sanitized
+}

@@ -2,7 +2,7 @@
 
 // TODO: The tree flickers because we refetch documents on every route change.
 //       Revisit this once we have a shared cache (see README).
-import { useEffect, useMemo, useState, useTransition } from "react"
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react"
 
 import {
   Sidebar,
@@ -25,13 +25,33 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { ChevronRight, Ellipsis, File as FileIcon, FilePlus, Folder as FolderIcon, FolderOpenIcon, FolderPlus } from "lucide-react"
+import {
+  ChevronRight,
+  Ellipsis,
+  File as FileIcon,
+  FilePlus,
+  Folder as FolderIcon,
+  FolderOpenIcon,
+  FolderPlus,
+  FolderPlus as FolderPlusIcon,
+  FilePlus as FilePlusIcon,
+  FolderX,
+  Trash2,
+} from "lucide-react"
 import { SidebarLogo } from "@/components/app-sidebar-logo"
 import { usePathname, useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 
 import { type TreeViewElement } from "@/components/ui/file-tree"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu"
+import { toast } from "sonner"
 
 const MARKDOWN_EXTENSION = /\.md$/i
 
@@ -51,8 +71,12 @@ type MarkdownFolder = {
 
 const DOCUMENTS_ROOT_ID = "documents-root"
 
-type SidebarTreeElement = TreeViewElement & {
+interface SidebarTreeElement extends TreeViewElement {
   children?: SidebarTreeElement[]
+  kind: "folder" | "document"
+  folderPath?: string
+  documentId?: string
+  documentPath?: string
 }
 
 function buildDocumentsTree(
@@ -65,13 +89,13 @@ function buildDocumentsTree(
     // Hidden root used purely for building nested structure
     isSelectable: false,
     children: [],
+    kind: "folder",
+    folderPath: "",
   }
 
   const ensureFolderNode = (pathSegments: string[]): SidebarTreeElement => {
     let currentNode = root
-    if (!currentNode.children) {
-      currentNode.children = []
-    }
+    currentNode.children = currentNode.children ?? []
 
     if (pathSegments.length === 0) {
       return currentNode
@@ -81,18 +105,27 @@ function buildDocumentsTree(
 
     pathSegments.forEach((segment) => {
       pathAccumulator.push(segment)
-      const folderId = `${DOCUMENTS_ROOT_ID}/${pathAccumulator.join("/")}`
-      currentNode.children = currentNode.children ?? []
-      let folderNode = currentNode.children.find((child) => child.id === folderId)
+      const folderPath = pathAccumulator.join("/")
+      const folderId = `${DOCUMENTS_ROOT_ID}/${folderPath}`
+      const children =
+        (currentNode.children as SidebarTreeElement[] | undefined) ?? []
+      currentNode.children = children
+      let folderNode = children.find((child) => child.id === folderId)
       if (!folderNode) {
         folderNode = {
           id: folderId,
           name: segment,
-          // Must Remain true so that we can select the node
+          // Must remain true so that we can select the node
           isSelectable: true,
           children: [],
-        }
-        currentNode.children.push(folderNode)
+          kind: "folder",
+          folderPath,
+        } satisfies SidebarTreeElement
+        children.push(folderNode)
+      } else {
+        folderNode.kind = "folder"
+        folderNode.folderPath = folderPath
+        folderNode.children = folderNode.children ?? []
       }
       currentNode = folderNode
     })
@@ -106,19 +139,26 @@ function buildDocumentsTree(
   })
 
   files.forEach((file) => {
-    const segments = file.documentPath.split("/")
+    const segments = file.documentPath.split("/").filter(Boolean)
     const filename = segments.pop()
     if (!filename) return
 
-    const parentNode = ensureFolderNode(segments.filter(Boolean))
-    parentNode.children = parentNode.children ?? []
+    const parentNode = ensureFolderNode(segments)
+    const children =
+      (parentNode.children as SidebarTreeElement[] | undefined) ?? []
+    parentNode.children = children
     const displayName = file.title?.trim().length ? file.title : filename.replace(MARKDOWN_EXTENSION, "")
 
-    parentNode.children.push({
+    const documentNode: SidebarTreeElement = {
       id: file.slug,
       name: displayName,
       isSelectable: true,
-    })
+      kind: "document",
+      documentId: file.id,
+      documentPath: file.documentPath,
+    }
+
+    children.push(documentNode)
   })
 
   return root.children ?? []
@@ -131,59 +171,96 @@ function renderCollapsibleTree(
     selectedSlug?: string
     openFolders: Set<string>
     onToggleFolder: (folderId: string) => void
+    isActionPending: boolean
+    onCreateDocument: (folderPath?: string) => void
+    onCreateFolder: (folderPath?: string) => void
+    onDeleteFolder: (folderPath: string) => void
+    onDeleteDocument: (documentId: string, slug?: string) => void
     isNested?: boolean
   }
 ) {
   return elements.map((element) => {
-    if (element.children) {
-      // This is a folder
+    if (element.kind === "folder") {
       const isOpen = options.openFolders.has(element.id)
+      const folderPath =
+        element.folderPath && element.folderPath.length > 0 ? element.folderPath : undefined
+
       return (
-        <Collapsible
-          key={element.id}
-          open={isOpen}
-          onOpenChange={() => options.onToggleFolder(element.id)}
-          className="group/collapsible"
-        >
-          <SidebarMenuItem>
-            <CollapsibleTrigger asChild>
-              <SidebarMenuButton className={cn(options.isNested && "mr-0!")}>
-                {isOpen ? (
-                  <FolderOpenIcon className="w-3.5 h-3.5 mr-2 flex-none text-muted-foreground" />
-                ) : (
-                  <FolderIcon className="w-3.5 h-3.5 mr-2 flex-none text-muted-foreground" />
-                )}
-                <span className="font-normal">{element.name}</span>
-                <ChevronRight className={cn(
-                  "ml-auto transition-transform w-3.5 h-3.5 text-muted-foreground",
-                  isOpen && "rotate-90"
-                )} />
-              </SidebarMenuButton>
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <SidebarMenuSub className="mr-0! pr-0!">
-                <SidebarMenuSubItem>
-                  {renderCollapsibleTree(element.children, { ...options, isNested: true })}
-                </SidebarMenuSubItem>
-              </SidebarMenuSub>
-            </CollapsibleContent>
-          </SidebarMenuItem>
-        </Collapsible>
+        <ContextMenu key={element.id}>
+          <Collapsible
+            open={isOpen}
+            onOpenChange={() => options.onToggleFolder(element.id)}
+            className="group/collapsible"
+          >
+            <SidebarMenuItem>
+              <ContextMenuTrigger asChild>
+                <CollapsibleTrigger asChild>
+                  <SidebarMenuButton className={cn(options.isNested && "mr-0!")}>
+                    {isOpen ? (
+                      <FolderOpenIcon className="w-3.5 h-3.5 mr-2 flex-none text-muted-foreground" />
+                    ) : (
+                      <FolderIcon className="w-3.5 h-3.5 mr-2 flex-none text-muted-foreground" />
+                    )}
+                    <span className="font-normal">{element.name}</span>
+                    <ChevronRight
+                      className={cn(
+                        "ml-auto transition-transform w-3.5 h-3.5 text-muted-foreground",
+                        isOpen && "rotate-90"
+                      )}
+                    />
+                  </SidebarMenuButton>
+                </CollapsibleTrigger>
+              </ContextMenuTrigger>
+              <CollapsibleContent>
+                <SidebarMenuSub className="mr-0! pr-0!">
+                  <SidebarMenuSubItem>
+                    {renderCollapsibleTree(element.children ?? [], { ...options, isNested: true })}
+                  </SidebarMenuSubItem>
+                </SidebarMenuSub>
+              </CollapsibleContent>
+            </SidebarMenuItem>
+          </Collapsible>
+          <ContextMenuContent>
+            <ContextMenuItem
+              disabled={options.isActionPending}
+              onSelect={() => options.onCreateDocument(folderPath)}
+            >
+              <FilePlusIcon className="size-4" />
+              Add Document
+            </ContextMenuItem>
+            <ContextMenuItem
+              disabled={options.isActionPending}
+              onSelect={() => options.onCreateFolder(folderPath)}
+            >
+              <FolderPlusIcon className="size-4" />
+              Add Folder
+            </ContextMenuItem>
+            {folderPath && (
+              <>
+                <ContextMenuSeparator />
+                <ContextMenuItem
+                  variant="destructive"
+                  disabled={options.isActionPending}
+                  onSelect={() => options.onDeleteFolder(folderPath)}
+                >
+                  <FolderX className="size-4" />
+                  Delete Folder
+                </ContextMenuItem>
+              </>
+            )}
+          </ContextMenuContent>
+        </ContextMenu>
       )
     }
 
-    // This is a file
     const isSelected = options.selectedSlug === element.id
     const fileButton = (
       <SidebarMenuButton
-        key={element.id}
         onClick={() => options.onSelect(element.id)}
         className={cn(
           "w-full justify-start",
           options.isNested && "mr-0!",
-          isSelected
-            ? "bg-muted/50 hover:bg-muted font-semibold"
-            : "hover:bg-muted"
+          isSelected ? "bg-muted/50 hover:bg-muted font-semibold" : "hover:bg-muted"
         )}
       >
         <FileIcon className="w-3.5 h-3.5 mr-2 flex-none text-muted-foreground" />
@@ -191,15 +268,37 @@ function renderCollapsibleTree(
       </SidebarMenuButton>
     )
 
-    // If nested inside a folder, return just the button (it's already inside SidebarMenuSubItem)
-    // If at root level, wrap in SidebarMenuItem
+    const menuContent = (
+      <>
+        <ContextMenuTrigger asChild>{fileButton}</ContextMenuTrigger>
+        <ContextMenuContent>
+          <ContextMenuItem
+            variant="destructive"
+            disabled={options.isActionPending}
+            onSelect={() => {
+              if (element.documentId) {
+                options.onDeleteDocument(element.documentId, element.id)
+              }
+            }}
+          >
+            <Trash2 className="size-4" />
+            Delete Document
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </>
+    )
+
     if (options.isNested) {
-      return fileButton
+      return (
+        <ContextMenu key={element.id}>
+          {menuContent}
+        </ContextMenu>
+      )
     }
 
     return (
       <SidebarMenuItem key={element.id}>
-        {fileButton}
+        <ContextMenu>{menuContent}</ContextMenu>
       </SidebarMenuItem>
     )
   })
@@ -212,18 +311,28 @@ export function AppSidebar() {
   const [folders, setFolders] = useState<MarkdownFolder[]>([])
   const [isLoadingFiles, setIsLoadingFiles] = useState(true)
   const [filesError, setFilesError] = useState<string | null>(null)
-  const [createError, setCreateError] = useState<string | null>(null)
-  const [isCreating, startCreateTransition] = useTransition()
-  const [isCreatingFolder, setIsCreatingFolder] = useState(false)
+  const [isActionPending, startActionTransition] = useTransition()
   const [openFolders, setOpenFolders] = useState<Set<string>>(new Set())
 
-  useEffect(() => {
-    const controller = new AbortController()
-    const fetchFiles = async () => {
-      try {
+  const loadDocuments = useCallback(
+    async ({
+      signal,
+      silent = false,
+    }: {
+      signal?: AbortSignal
+      silent?: boolean
+    } = {}) => {
+      if (signal?.aborted) {
+        return null
+      }
+
+      if (!silent) {
         setIsLoadingFiles(true)
-        setFilesError(null)
-        const response = await fetch("/api/markdown", { signal: controller.signal })
+      }
+      setFilesError(null)
+
+      try {
+        const response = await fetch("/api/markdown", signal ? { signal } : undefined)
         if (!response.ok) {
           throw new Error("Unable to load markdown files")
         }
@@ -234,42 +343,59 @@ export function AppSidebar() {
             ? data.files
             : []
 
-        const parsedDocuments = dataset.filter((doc: Partial<MarkdownDocument>): doc is MarkdownDocument => {
-          return (
-            typeof doc?.id === "string" &&
-            typeof doc?.slug === "string" &&
-            typeof doc?.documentPath === "string" &&
-            typeof doc?.title === "string"
-          )
-        })
+        const parsedDocuments = dataset.filter(
+          (doc: Partial<MarkdownDocument>): doc is MarkdownDocument => {
+            return (
+              typeof doc?.id === "string" &&
+              typeof doc?.slug === "string" &&
+              typeof doc?.documentPath === "string" &&
+              typeof doc?.title === "string"
+            )
+          }
+        )
 
         const rawFolders = Array.isArray(data.folders) ? data.folders : []
-        const parsedFolders = rawFolders.filter((folder: Partial<MarkdownFolder>): folder is MarkdownFolder => {
-          return (
-            typeof folder?.id === "string" &&
-            typeof folder?.folderPath === "string" &&
-            typeof folder?.createdAt === "string" &&
-            typeof folder?.updatedAt === "string"
-          )
-        })
+        const parsedFolders = rawFolders.filter(
+          (folder: Partial<MarkdownFolder>): folder is MarkdownFolder => {
+            return (
+              typeof folder?.id === "string" &&
+              typeof folder?.folderPath === "string" &&
+              typeof folder?.createdAt === "string" &&
+              typeof folder?.updatedAt === "string"
+            )
+          }
+        )
+
+        if (signal?.aborted) {
+          return null
+        }
 
         setDocuments(parsedDocuments)
         setFolders(parsedFolders)
+
+        return { documents: parsedDocuments, folders: parsedFolders }
       } catch (error) {
-        if ((error as DOMException)?.name === "AbortError") {
-          return
+        if ((error as DOMException)?.name === "AbortError" || signal?.aborted) {
+          return null
         }
         console.error(error)
         setFilesError(error instanceof Error ? error.message : "Something went wrong")
+        return null
       } finally {
-        setIsLoadingFiles(false)
+        if (!signal?.aborted && !silent) {
+          setIsLoadingFiles(false)
+        }
       }
-    }
+    },
+    []
+  )
 
-    fetchFiles()
+  useEffect(() => {
+    const controller = new AbortController()
+    void loadDocuments({ signal: controller.signal })
     return () => controller.abort()
     // NOTE: dependency on pathname causes refetch/flicker; replace with cached data later.
-  }, [pathname])
+  }, [pathname, loadDocuments])
 
   const treeElements = useMemo(
     () => buildDocumentsTree(documents, folders),
@@ -283,15 +409,18 @@ export function AppSidebar() {
     return segments.map((segment) => decodeURIComponent(segment)).join("/")
   }, [pathname])
 
-  const navigateToSlug = (slug: string) => {
-    const encodedPath = slug
-      .split("/")
-      .map((segment) => encodeURIComponent(segment))
-      .join("/")
-    router.push(`/documents/${encodedPath}`)
-  }
+  const navigateToSlug = useCallback(
+    (slug: string) => {
+      const encodedPath = slug
+        .split("/")
+        .map((segment) => encodeURIComponent(segment))
+        .join("/")
+      router.push(`/documents/${encodedPath}`)
+    },
+    [router]
+  )
 
-  const toggleFolder = (folderId: string) => {
+  const toggleFolder = useCallback((folderId: string) => {
     setOpenFolders((prev) => {
       const next = new Set(prev)
       if (next.has(folderId)) {
@@ -301,9 +430,34 @@ export function AppSidebar() {
       }
       return next
     })
-  }
+  }, [])
 
-  // Auto-expand folders that contain the selected document
+  const openFolderPath = useCallback((folderPath?: string) => {
+    if (!folderPath) return
+    const segments = folderPath.split("/").filter(Boolean)
+    if (!segments.length) return
+    setOpenFolders((prev) => {
+      const next = new Set(prev)
+      segments.forEach((_, index) => {
+        const partial = segments.slice(0, index + 1).join("/")
+        next.add(`${DOCUMENTS_ROOT_ID}/${partial}`)
+      })
+      return next
+    })
+  }, [])
+
+  const closeFolderPath = useCallback((folderPath: string) => {
+    setOpenFolders((prev) => {
+      const targetPrefix = `${DOCUMENTS_ROOT_ID}/${folderPath}`
+      const next = new Set(
+        [...prev].filter(
+          (id) => id !== targetPrefix && !id.startsWith(`${targetPrefix}/`)
+        )
+      )
+      return next
+    })
+  }, [])
+
   useEffect(() => {
     if (!selectedSlug || !treeElements.length) return
 
@@ -313,12 +467,10 @@ export function AppSidebar() {
       parentPath: string[] = []
     ): string[] | null => {
       for (const element of elements) {
-        if (element.id === targetSlug) {
-          // Found the target, return all parent folder IDs
+        if (element.kind === "document" && element.id === targetSlug) {
           return parentPath
         }
-        if (element.children?.length) {
-          // This is a folder, add it to the path and search children
+        if (element.kind === "folder" && element.children?.length) {
           const newPath = [...parentPath, element.id]
           const found = findParentFolders(element.children, targetSlug, newPath)
           if (found !== null) {
@@ -339,108 +491,229 @@ export function AppSidebar() {
     }
   }, [selectedSlug, treeElements])
 
-  const handleCreateDocument = () => {
-    if (isCreating) return
+  const createDocumentInPath = useCallback(
+    async (folderPath?: string) => {
+      const payload: Record<string, unknown> = { title: "untititled" }
+      if (folderPath) {
+        payload.folderPath = folderPath
+      }
 
-    startCreateTransition(async () => {
-      try {
-        setCreateError(null)
-        const response = await fetch("/api/markdown", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ title: "untititled" }),
-        })
+      const response = await fetch("/api/markdown", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      })
 
-        if (!response.ok) {
-          const payload = await response.json().catch(() => ({}))
-          throw new Error(payload.error ?? "Failed to create document")
-        }
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}))
+        throw new Error(body.error ?? "Failed to create document")
+      }
 
-        const data = await response.json()
-        const document = data.document
-        if (!document) {
-          throw new Error("Missing document payload")
-        }
+      const data = await response.json()
+      const document = data.document as {
+        id?: string
+        slug?: string
+        documentPath?: string
+        title?: string
+      } | null
 
-        const slug = document.slug ?? document.id
-        if (!slug) {
-          throw new Error("Missing document identifier")
-        }
+      if (!document?.id || !document.documentPath) {
+        throw new Error("Missing document payload")
+      }
 
+      const refreshResult = await loadDocuments({ silent: true })
+      const docPath = document.documentPath
+      openFolderPath(docPath.split("/").slice(0, -1).join("/"))
+
+      const slug = document.slug ?? document.id
+      if (slug) {
         navigateToSlug(slug)
-      } catch (error) {
-        setCreateError(error instanceof Error ? error.message : "Unable to create document")
       }
-    })
-  }
 
-  const handleCreateFolder = () => {
-    if (isCreatingFolder || isCreating) return
+      const label = document.title ?? slug ?? "document"
+      toast.success(`Created ${label}`)
 
-    setIsCreatingFolder(true)
-    startCreateTransition(async () => {
-      try {
-        setCreateError(null)
-        const folderName = "untitled-folder"
-        const response = await fetch("/api/markdown", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            type: "folder",
-            folderPath: folderName,
-          }),
-        })
+      return refreshResult
+    },
+    [loadDocuments, navigateToSlug, openFolderPath]
+  )
 
-        if (!response.ok) {
-          const payload = await response.json().catch(() => ({}))
-          throw new Error(payload.error ?? "Failed to create folder")
-        }
+  const createFolderInPath = useCallback(
+    async (parentPath?: string) => {
+      const baseName = "untitled-folder"
+      const targetPath =
+        parentPath && parentPath.length > 0 ? `${parentPath}/${baseName}` : baseName
 
-        const data = await response.json()
-        const folder = data.folder as Partial<MarkdownFolder> | undefined
-        if (
-          !folder ||
-          typeof folder.id !== "string" ||
-          typeof folder.folderPath !== "string" ||
-          typeof folder.createdAt !== "string" ||
-          typeof folder.updatedAt !== "string"
-        ) {
-          throw new Error("Missing folder payload")
-        }
+      const response = await fetch("/api/markdown", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          type: "folder",
+          folderPath: targetPath,
+        }),
+      })
 
-        setFolders((prev) => {
-          const exists = prev.some((existing) => existing.id === folder.id)
-          if (exists) {
-            return prev
-          }
-          return [...prev, folder as MarkdownFolder]
-        })
-
-        const folderPath = folder.folderPath
-        if (folderPath) {
-          const segments = folderPath.split("/").filter(Boolean)
-          if (segments.length > 0) {
-            setOpenFolders((prev) => {
-              const next = new Set(prev)
-              segments.forEach((_, index) => {
-                const partialPath = segments.slice(0, index + 1).join("/")
-                next.add(`${DOCUMENTS_ROOT_ID}/${partialPath}`)
-              })
-              return next
-            })
-          }
-        }
-      } catch (error) {
-        setCreateError(error instanceof Error ? error.message : "Unable to create folder")
-      } finally {
-        setIsCreatingFolder(false)
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}))
+        throw new Error(body.error ?? "Failed to create folder")
       }
-    })
-  }
+
+      const data = await response.json()
+      const folder = data.folder as { folderPath?: string } | null
+      if (!folder?.folderPath) {
+        throw new Error("Missing folder payload")
+      }
+
+      await loadDocuments({ silent: true })
+      openFolderPath(folder.folderPath)
+
+      const folderName = folder.folderPath.split("/").pop() ?? "folder"
+      toast.success(`Created folder "${folderName}"`)
+    },
+    [loadDocuments, openFolderPath]
+  )
+
+  const deleteDocumentById = useCallback(
+    async (documentId: string, slug?: string) => {
+      const response = await fetch("/api/markdown", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ id: documentId }),
+      })
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}))
+        throw new Error(body.error ?? "Failed to delete document")
+      }
+
+      const data = await response.json()
+      const document = data.document as { slug?: string; title?: string } | null
+
+      await loadDocuments({ silent: true })
+
+      const deletedSlug = document?.slug ?? slug
+      if (deletedSlug && deletedSlug === selectedSlug) {
+        router.replace("/documents")
+      }
+
+      const label = document?.title ?? "Document"
+      toast.success(`${label} deleted`)
+    },
+    [loadDocuments, router, selectedSlug]
+  )
+
+  const deleteFolderAtPath = useCallback(
+    async (folderPath: string) => {
+      const response = await fetch("/api/markdown", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ type: "folder", folderPath }),
+      })
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}))
+        throw new Error(body.error ?? "Failed to delete folder")
+      }
+
+      const result = await loadDocuments({ silent: true })
+      closeFolderPath(folderPath)
+
+      if (
+        selectedSlug &&
+        result &&
+        !result.documents.some((doc: MarkdownDocument) => doc.slug === selectedSlug)
+      ) {
+        router.replace("/documents")
+      }
+
+      const folderName = folderPath.split("/").pop() ?? folderPath
+      toast.success(`Deleted folder "${folderName}"`)
+    },
+    [loadDocuments, closeFolderPath, selectedSlug, router]
+  )
+
+  const triggerCreateDocument = useCallback(
+    (folderPath?: string) => {
+      if (isActionPending) return
+      startActionTransition(() => {
+        createDocumentInPath(folderPath).catch((error) => {
+          console.error(error)
+          toast.error(
+            error instanceof Error ? error.message : "Unable to create document"
+          )
+        })
+      })
+    },
+    [isActionPending, startActionTransition, createDocumentInPath]
+  )
+
+  const triggerCreateFolder = useCallback(
+    (parentPath?: string) => {
+      if (isActionPending) return
+      startActionTransition(() => {
+        createFolderInPath(parentPath).catch((error) => {
+          console.error(error)
+          toast.error(
+            error instanceof Error ? error.message : "Unable to create folder"
+          )
+        })
+      })
+    },
+    [isActionPending, startActionTransition, createFolderInPath]
+  )
+
+  const triggerDeleteDocument = useCallback(
+    (documentId: string, slug?: string) => {
+      if (!documentId || isActionPending) return
+      const confirmed = window.confirm(
+        "Delete this document? This action cannot be undone."
+      )
+      if (!confirmed) return
+      startActionTransition(() => {
+        deleteDocumentById(documentId, slug).catch((error) => {
+          console.error(error)
+          toast.error(
+            error instanceof Error ? error.message : "Unable to delete document"
+          )
+        })
+      })
+    },
+    [isActionPending, startActionTransition, deleteDocumentById]
+  )
+
+  const triggerDeleteFolder = useCallback(
+    (folderPath: string) => {
+      if (!folderPath || isActionPending) return
+      const folderName = folderPath.split("/").pop() ?? folderPath
+      const confirmed = window.confirm(
+        `Delete the folder "${folderName}" and all of its contents? This action cannot be undone.`
+      )
+      if (!confirmed) return
+      startActionTransition(() => {
+        deleteFolderAtPath(folderPath).catch((error) => {
+          console.error(error)
+          toast.error(error instanceof Error ? error.message : "Unable to delete folder")
+        })
+      })
+    },
+    [isActionPending, startActionTransition, deleteFolderAtPath]
+  )
+
+  const handleCreateDocument = useCallback(() => {
+    triggerCreateDocument()
+  }, [triggerCreateDocument])
+
+  const handleCreateFolder = useCallback(() => {
+    triggerCreateFolder()
+  }, [triggerCreateFolder])
 
   return (
     <>
@@ -463,14 +736,14 @@ export function AppSidebar() {
               <DropdownMenuContent align="start" className="w-48">
                 <DropdownMenuItem
                   onClick={handleCreateDocument}
-                  disabled={isCreating || isCreatingFolder}
+                  disabled={isActionPending}
                 >
                   <FilePlus className="mr-2 h-4 w-4" />
                   <span>Add Document</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={handleCreateFolder}
-                  disabled={isCreating || isCreatingFolder}
+                  disabled={isActionPending}
                 >
                   <FolderPlus className="mr-2 h-4 w-4" />
                   <span>Add Folder</span>
@@ -482,9 +755,6 @@ export function AppSidebar() {
               {filesError && !isLoadingFiles && (
                 <p className="text-xs text-destructive">{filesError}</p>
               )}
-              {createError && !isLoadingFiles && (
-                <p className="text-xs text-destructive">{createError}</p>
-              )}
               {!isLoadingFiles && !filesError && treeElements.length > 0 && (
                 <SidebarMenu>
                   {renderCollapsibleTree(treeElements, {
@@ -492,8 +762,12 @@ export function AppSidebar() {
                     selectedSlug,
                     openFolders,
                     onToggleFolder: toggleFolder,
+                    isActionPending,
+                    onCreateDocument: triggerCreateDocument,
+                    onCreateFolder: triggerCreateFolder,
+                    onDeleteFolder: triggerDeleteFolder,
+                    onDeleteDocument: triggerDeleteDocument,
                   })}
-                  
                 </SidebarMenu>
               )}
             </SidebarGroupContent>
