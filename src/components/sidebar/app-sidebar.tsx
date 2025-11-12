@@ -29,10 +29,9 @@ import {
   ChevronRight,
   Ellipsis,
   File as FileIcon,
-  FilePlus,
   Folder as FolderIcon,
   FolderOpenIcon,
-  FolderPlus,
+
   FolderPlus as FolderPlusIcon,
   FilePlus as FilePlusIcon,
   FolderX,
@@ -54,6 +53,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu"
 import { toast } from "sonner"
+import Spinner from "@/components/ui/spinner"
 
 const MARKDOWN_EXTENSION = /\.md$/i
 
@@ -234,7 +234,7 @@ function renderCollapsibleTree(
               disabled={options.isActionPending}
               onSelect={() => options.onCreateFolder(folderPath)}
             >
-              <FolderPlusIcon className="size-4" />
+              <FolderIcon className="size-4" />
               Add Folder
             </ContextMenuItem>
             {folderPath && (
@@ -724,7 +724,7 @@ export function AppSidebar() {
                     onClick={handleCreateDocument}
                     disabled={isActionPending}
                   >
-                    <FilePlus className="size-4" />
+                    <FileIcon className="size-4" />
                     <span>New Document</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -756,22 +756,33 @@ export function AppSidebar() {
                   onClick={handleCreateDocument}
                   disabled={isActionPending}
                 >
-                  <FilePlus className="mr-2 h-4 w-4" />
+                  <FileIcon className="mr-2 h-4 w-4" />
                   <span>Add Document</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={handleCreateFolder}
                   disabled={isActionPending}
                 >
-                  <FolderPlus className="mr-2 h-4 w-4" />
+                  <FolderIcon className="mr-2 h-4 w-4" />
                   <span>Add Folder</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
             <SidebarGroupContent>
-              {isLoadingFiles && <p className="text-xs text-muted-foreground">Loading files…</p>}
+              {isLoadingFiles && (
+                <SidebarMenu>
+                  <SidebarMenuButton>
+                    <Spinner className="size-4"  />
+                    <span className="text-xs text-muted-foreground">Loading files…</span>
+                  </SidebarMenuButton>
+                </SidebarMenu>
+              )}
               {filesError && !isLoadingFiles && (
-                <p className="text-xs text-destructive">{filesError}</p>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <p className="text-xs text-destructive">{filesError}</p>
+                  </SidebarMenuItem>
+                </SidebarMenu>
               )}
               {!isLoadingFiles && !filesError && treeElements.length > 0 && (
                 <SidebarMenu>
