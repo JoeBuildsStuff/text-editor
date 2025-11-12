@@ -9,6 +9,7 @@ import {
   listMarkdownItems,
   MarkdownFileOperationError,
   renameMarkdownFile,
+  updateMarkdownFileContent,
 } from "@/lib/markdown-files";
 
 const payloadSchema = z
@@ -40,6 +41,11 @@ const payloadSchema = z
 const renameSchema = z.object({
   id: z.string().uuid(),
   title: z.string().min(1, "Title is required").max(128, "Title is too long"),
+});
+
+const updateContentSchema = z.object({
+  id: z.string().uuid(),
+  content: z.string(),
 });
 
 const deleteSchema = z.union([
@@ -107,9 +113,17 @@ export async function GET() {
 export async function PATCH(request: Request) {
   try {
     const data = await request.json();
+    
+    // Check if this is a content update (has content field) or rename (has title field)
+    if ("content" in data && !("title" in data)) {
+      const payload = updateContentSchema.parse(data);
+      const document = await updateMarkdownFileContent(payload.id, payload.content);
+      return NextResponse.json({ document });
+    }
+    
+    // Otherwise, treat as rename
     const payload = renameSchema.parse(data);
     const document = await renameMarkdownFile(payload.id, payload.title);
-
     return NextResponse.json({ document });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -119,8 +133,8 @@ export async function PATCH(request: Request) {
     if (error instanceof MarkdownFileOperationError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
-    console.error("Failed to rename markdown file", error);
-    return NextResponse.json({ error: "Failed to rename markdown file" }, { status: 500 });
+    console.error("Failed to update markdown file", error);
+    return NextResponse.json({ error: "Failed to update markdown file" }, { status: 500 });
   }
 }
 

@@ -29,13 +29,12 @@ export function getDatabase(): Database.Database {
 }
 
 function initializeSchema(database: Database.Database) {
-  // Create documents table
+  // Create documents table (metadata only - content stored in files)
   database.exec(`
     CREATE TABLE IF NOT EXISTS documents (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
       document_path TEXT NOT NULL UNIQUE,
-      content TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -50,6 +49,36 @@ function initializeSchema(database: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_documents_path ON documents(document_path);
     CREATE INDEX IF NOT EXISTS idx_folders_path ON folders(folder_path);
   `)
+  
+  // Migrate old schema if content column exists
+  try {
+    const tableInfo = database.prepare("PRAGMA table_info(documents)").all() as Array<{ name: string }>
+    const hasContentColumn = tableInfo.some(col => col.name === "content")
+    
+    if (hasContentColumn) {
+      // Create new table without content column
+      database.exec(`
+        CREATE TABLE IF NOT EXISTS documents_new (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          document_path TEXT NOT NULL UNIQUE,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        
+        INSERT INTO documents_new (id, title, document_path, created_at, updated_at)
+        SELECT id, title, document_path, created_at, updated_at FROM documents;
+        
+        DROP TABLE documents;
+        ALTER TABLE documents_new RENAME TO documents;
+        
+        CREATE INDEX IF NOT EXISTS idx_documents_path ON documents(document_path);
+      `)
+    }
+  } catch (error) {
+    // Migration failed, but schema is already correct
+    console.warn("Schema migration check failed:", error)
+  }
 }
 
 export function closeDatabase() {

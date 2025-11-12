@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation"
 
 import { DocumentTitleEditor } from "@/components/documents/document-title-editor"
-import Tiptap from "@/components/tiptap/tiptap"
+import { DocumentEditor } from "@/components/documents/document-editor"
 import { getMarkdownFileById } from "@/lib/markdown-files"
 
 type DocumentPageProps = {
@@ -21,7 +21,7 @@ export default async function DocumentDetailPage({ params }: DocumentPageProps) 
   return (
     <div className="mx-auto flex h-full w-full max-w-4xl flex-col gap-2">
       <DocumentTitleEditor id={file.id} title={file.title} slug={file.slug} />
-      <Tiptap content={file.content ?? ""} />
+      <DocumentEditor documentId={file.id} initialContent={file.content ?? ""} />
     </div>
   )
 }

@@ -16,11 +16,12 @@ This application provides a full-featured markdown editor where you can:
 
 ### Document Storage
 
-- **All data** (documents, folders, metadata, and content) is stored in a **SQLite database** at `server/documents.db`
+- **Hybrid approach**: Metadata (IDs, titles, paths, timestamps) is stored in **SQLite database** at `server/documents.db`
+- **Content** is stored in **markdown files** in `server/documents/` directory
 - Each document has a **UUID-based ID** for stable references, even when filenames change
 - Documents and folders can be organized in **nested folders** using folder paths
-- The database uses ACID transactions to ensure data consistency and prevent race conditions
-- Content is stored directly in the database, eliminating the need for file synchronization
+- The database uses ACID transactions for metadata operations
+- Content files are version-control friendly and can be edited with external tools
 
 ### Key Components
 
@@ -152,13 +153,21 @@ Delete a document or folder.
 - `type` must be `"folder"`
 - `folderPath` (required) – Relative folder path (using `/` separators). The folder and all nested contents are deleted recursively.
 
-## Database
+## Database & File Storage
 
-The application uses SQLite for data storage. The database file (`server/documents.db`) is automatically created on first use. The database schema includes:
+The application uses a **hybrid storage approach**:
 
-- **documents table**: Stores document ID, title, path, content, and timestamps
-- **folders table**: Stores folder ID, path, and timestamps
+### SQLite Database (`server/documents.db`)
+Stores metadata only:
+- **documents table**: Document ID, title, path, and timestamps
+- **folders table**: Folder ID, path, and timestamps
 - **Indexes**: Optimized indexes on document and folder paths for fast queries
+
+### File System (`server/documents/`)
+Stores document content:
+- Markdown files (`.md`) organized by folder structure
+- Content is stored in files matching the `document_path` from the database
+- Files can be edited with external tools and are version-control friendly
 
 ## Upcoming Enhancements
 
