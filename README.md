@@ -16,10 +16,11 @@ This application provides a full-featured markdown editor where you can:
 
 ### Document Storage
 
-- **Markdown files** are stored in `server/documents/` directory
-- **Metadata** (ID, kind, paths, timestamps, and titles) is stored in `server/documents/index.json`
+- **All data** (documents, folders, metadata, and content) is stored in a **SQLite database** at `server/documents.db`
 - Each document has a **UUID-based ID** for stable references, even when filenames change
-- Documents and folders can be organized in **nested folders** within the documents directory
+- Documents and folders can be organized in **nested folders** using folder paths
+- The database uses ACID transactions to ensure data consistency and prevent race conditions
+- Content is stored directly in the database, eliminating the need for file synchronization
 
 ### Key Components
 
@@ -47,11 +48,11 @@ This application provides a full-featured markdown editor where you can:
 
 ### Document Management
 
-- **File synchronization**: The system automatically syncs `index.json` with the filesystem, so manually added files are detected
-- **Title vs Filename**: Document titles (display names) are stored separately from filenames, allowing user-friendly titles while maintaining valid filenames
+- **Database storage**: All documents and folders are stored in SQLite with atomic operations, ensuring data consistency
+- **Title vs Filename**: Document titles (display names) are stored separately from document paths, allowing user-friendly titles while maintaining valid paths
 - **Slug-based routing**: Documents are accessed via `/documents/[id]` where `id` is the document's UUID slug
-- **Folder creation**: Folders are stored as first-class metadata entries. You can create empty folders from the UI or API, and add documents to them later.
-- **Folder deletion**: Folders can be deleted from the UI or API. Deleting a folder recursively removes all nested folders and documents and updates the metadata index automatically.
+- **Folder creation**: Folders are stored as first-class database entries. You can create empty folders from the UI or API, and add documents to them later.
+- **Folder deletion**: Folders can be deleted from the UI or API. Deleting a folder recursively removes all nested folders and documents from the database automatically.
 
 ## Getting Started
 
@@ -151,8 +152,15 @@ Delete a document or folder.
 - `type` must be `"folder"`
 - `folderPath` (required) – Relative folder path (using `/` separators). The folder and all nested contents are deleted recursively.
 
+## Database
+
+The application uses SQLite for data storage. The database file (`server/documents.db`) is automatically created on first use. The database schema includes:
+
+- **documents table**: Stores document ID, title, path, content, and timestamps
+- **folders table**: Stores folder ID, path, and timestamps
+- **Indexes**: Optimized indexes on document and folder paths for fast queries
+
 ## Upcoming Enhancements
 
 - **Stable sidebar tree data** – eliminate the document tree flicker in `AppSidebar` by caching `/api/markdown` responses (React context/SWR/server component) instead of refetching on every navigation.
-- **Live metadata updates** – watch the `server/documents` directory and automatically re-sync `index.json` so manually added files appear instantly.
 - **Editor save integration** – wire the Tiptap editor to autosave document content back through the markdown API while preserving the UUID-based metadata.

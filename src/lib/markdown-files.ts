@@ -1,9 +1,6 @@
 import { randomUUID } from "node:crypto"
-import { access, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises"
 import path from "node:path"
-
-export const MARKDOWN_DIR = path.join(process.cwd(), "server", "documents")
-const METADATA_PATH = path.join(MARKDOWN_DIR, "index.json")
+import { getDatabase } from "./db"
 
 const MARKDOWN_EXTENSION = /\.md$/i
 
@@ -74,227 +71,36 @@ function toPosixPath(filePath: string) {
   return filePath.split(path.sep).join("/")
 }
 
-export async function ensureMarkdownDirectory() {
-  await mkdir(MARKDOWN_DIR, { recursive: true })
-}
-
-async function ensureMetadataFile() {
-  await ensureMarkdownDirectory()
-  try {
-    await access(METADATA_PATH)
-  } catch {
-    await writeFile(METADATA_PATH, JSON.stringify([], null, 2), "utf-8")
-  }
-}
-
-function isValidIsoString(value: unknown): value is string {
-  if (typeof value !== "string") return false
-  const date = new Date(value)
-  return !Number.isNaN(date.valueOf())
-}
-
-function toIsoStringOrNow(value: unknown) {
-  if (isValidIsoString(value)) return value
-  return new Date().toISOString()
-}
-
-function normalizeRecord(candidate: unknown): MetadataRecord | null {
-  if (!candidate || typeof candidate !== "object") return null
-
-  const record = candidate as Record<string, unknown>
-
-  const idValue = record.id
-  if (typeof idValue !== "string" || idValue.length === 0) {
-    return null
-  }
-
-  const timestamps = {
-    createdAt: toIsoStringOrNow(record.createdAt),
-    updatedAt: toIsoStringOrNow(record.updatedAt),
-  }
-
-  const kindValue = record.kind
-
-  if (kindValue === "folder") {
-    const folderPathValue = record.folderPath
-    if (typeof folderPathValue !== "string" || folderPathValue.length === 0) {
-      return null
-    }
-    return {
-      id: idValue,
-      kind: "folder",
-      folderPath: folderPathValue,
-      ...timestamps,
-    }
-  }
-
-  const documentPathValue = record.documentPath
-  if (typeof documentPathValue !== "string" || documentPathValue.length === 0) {
-    return null
-  }
-
-  const titleValue = typeof record.title === "string" ? record.title : ""
-
-  return {
-    id: idValue,
-    kind: "document",
-    title: titleValue,
-    documentPath: documentPathValue,
-    ...timestamps,
-  }
-}
-
-async function readMetadata(): Promise<MetadataRecord[]> {
-  await ensureMetadataFile()
-  const data = await readFile(METADATA_PATH, "utf-8")
-  try {
-    const parsed = JSON.parse(data)
-    if (!Array.isArray(parsed)) return []
-    const records: MetadataRecord[] = []
-    for (const candidate of parsed) {
-      const normalized = normalizeRecord(candidate)
-      if (normalized) {
-        records.push(normalized)
-      }
-    }
-    return records
-  } catch {
-    return []
-  }
-}
-
-async function writeMetadata(records: MetadataRecord[]) {
-  await ensureMetadataFile()
-  await writeFile(METADATA_PATH, JSON.stringify(records, null, 2), "utf-8")
-}
-
-type WalkResult = {
-  documents: string[]
-  folders: string[]
-}
-
-async function walkDocumentsAndFolders(
-  currentDir = MARKDOWN_DIR,
-  base = ""
-): Promise<WalkResult> {
-  const entries = await readdir(currentDir, { withFileTypes: true })
-  const aggregated: WalkResult = { documents: [], folders: [] }
-
-  for (const entry of entries) {
-    const entryPath = path.join(currentDir, entry.name)
-    if (entry.isDirectory()) {
-      const folderPath = base ? `${base}/${entry.name}` : entry.name
-      const normalizedFolder = toPosixPath(folderPath)
-      aggregated.folders.push(normalizedFolder)
-      const nested = await walkDocumentsAndFolders(entryPath, folderPath)
-      aggregated.documents.push(...nested.documents)
-      aggregated.folders.push(...nested.folders)
-      continue
-    }
-
-    if (!entry.isFile() || !entry.name.toLowerCase().endsWith(".md")) {
-      continue
-    }
-
-    const documentPath = base ? `${base}/${entry.name}` : entry.name
-    aggregated.documents.push(toPosixPath(documentPath))
-  }
-
-  return aggregated
-}
-
-async function syncMetadataWithFilesystem() {
-  const metadata = await readMetadata()
-  const documentRecords = metadata.filter(isDocumentRecord)
-  const folderRecords = metadata.filter(isFolderRecord)
-  const { documents: filePaths, folders: folderPaths } = await walkDocumentsAndFolders()
-  const filePathSet = new Set(filePaths)
-  const folderPathSet = new Set(folderPaths)
-  let changed = false
-
-  const validDocuments: DocumentRecord[] = documentRecords.filter((record) => {
-    const exists = filePathSet.has(record.documentPath)
-    if (!exists) {
-      changed = true
-    }
-    return exists
-  })
-
-  const existingPaths = new Set(validDocuments.map((record) => record.documentPath))
-
-  for (const documentPath of filePaths) {
-    if (existingPaths.has(documentPath)) continue
-    const timestamp = new Date().toISOString()
-    validDocuments.push({
-      id: randomUUID(),
-      kind: "document",
-      title: stripMarkdownExtension(path.basename(documentPath)),
-      documentPath,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    })
-    changed = true
-  }
-
-  const validFolders: FolderRecord[] = folderRecords.filter((record) => {
-    const exists = folderPathSet.has(record.folderPath)
-    if (!exists) {
-      changed = true
-    }
-    return exists
-  })
-
-  const existingFolderPaths = new Set(validFolders.map((record) => record.folderPath))
-
-  for (const folderPath of folderPaths) {
-    if (existingFolderPaths.has(folderPath)) continue
-    const timestamp = new Date().toISOString()
-    validFolders.push({
-      id: randomUUID(),
-      kind: "folder",
-      folderPath,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    })
-    changed = true
-  }
-
-  if (changed) {
-    const nextRecords: MetadataRecord[] = [...validDocuments, ...validFolders]
-    await writeMetadata(nextRecords)
-    return nextRecords
-  }
-
-  return [...validDocuments, ...validFolders]
-}
-
 function buildRelativePath(documentPath: string) {
-  return path.relative(process.cwd(), path.join(MARKDOWN_DIR, documentPath))
+  // For SQLite, we don't have a filesystem path, so return a relative path based on documentPath
+  return documentPath
 }
 
-async function documentRecordToMeta(
-  record: DocumentRecord,
+function documentRecordToMeta(
+  row: {
+    id: string
+    title: string
+    document_path: string
+    content?: string
+    created_at: string
+    updated_at: string
+  },
   includeContent: boolean
-): Promise<MarkdownFileMeta> {
-  const absolutePath = path.join(MARKDOWN_DIR, record.documentPath)
-  const relativePath = buildRelativePath(record.documentPath)
-  const filename = path.basename(record.documentPath)
-  let content: string | undefined
-
-  if (includeContent) {
-    try {
-      content = await readFile(absolutePath, "utf-8")
-    } catch {
-      content = undefined
-    }
-  }
+): MarkdownFileMeta {
+  const filename = path.basename(row.document_path)
+  const relativePath = buildRelativePath(row.document_path)
 
   return {
-    ...record,
+    id: row.id,
+    kind: "document",
+    title: row.title,
+    documentPath: row.document_path,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
     filename,
     relativePath,
-    slug: record.id,
-    content,
+    slug: row.id,
+    content: includeContent ? row.content : undefined,
   }
 }
 
@@ -309,26 +115,66 @@ export async function listMarkdownFiles({ includeContent = true }: ListOptions =
 
 export async function getMarkdownFileById(id?: string | null) {
   if (!id) return undefined
-  const records = await syncMetadataWithFilesystem()
-  const record = records.find(
-    (candidate): candidate is DocumentRecord =>
-      isDocumentRecord(candidate) && candidate.id === id
-  )
-  if (!record) return undefined
-  return documentRecordToMeta(record, true)
+
+  const db = getDatabase()
+  const row = db
+    .prepare("SELECT * FROM documents WHERE id = ?")
+    .get(id) as
+    | {
+        id: string
+        title: string
+        document_path: string
+        content: string
+        created_at: string
+        updated_at: string
+      }
+    | undefined
+
+  if (!row) return undefined
+
+  return documentRecordToMeta(row, true)
 }
 
 export async function listMarkdownItems({ includeContent = true }: ListOptions = {}) {
-  const records = await syncMetadataWithFilesystem()
-  const documentRecords = records.filter(isDocumentRecord)
-  const folderRecords = records.filter(isFolderRecord)
-  const documents = await Promise.all(
-    documentRecords.map((record) => documentRecordToMeta(record, includeContent))
+  const db = getDatabase()
+
+  // Get all documents
+  const documentRows = db
+    .prepare("SELECT * FROM documents ORDER BY document_path")
+    .all() as Array<{
+    id: string
+    title: string
+    document_path: string
+    content: string
+    created_at: string
+    updated_at: string
+  }>
+
+  const documents = documentRows.map((row) =>
+    documentRecordToMeta(row, includeContent)
   )
+
+  // Get all folders
+  const folderRows = db
+    .prepare("SELECT * FROM folders ORDER BY folder_path")
+    .all() as Array<{
+    id: string
+    folder_path: string
+    created_at: string
+    updated_at: string
+  }>
+
+  const folders: FolderRecord[] = folderRows.map((row) => ({
+    id: row.id,
+    kind: "folder",
+    folderPath: row.folder_path,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }))
 
   return {
     documents,
-    folders: folderRecords,
+    folders,
   }
 }
 
@@ -339,56 +185,41 @@ export class MarkdownFileOperationError extends Error {
   }
 }
 
-async function upsertRecordTitle(documentPath: string, title: string) {
-  const records = await syncMetadataWithFilesystem()
-  const documents = records.filter(isDocumentRecord)
-  const folders = records.filter(isFolderRecord)
-  const index = documents.findIndex((record) => record.documentPath === documentPath)
-  const timestamp = new Date().toISOString()
+function findAvailableDocumentPath(
+  db: ReturnType<typeof getDatabase>,
+  baseName: string,
+  folderPath?: string
+): string {
+  const sanitizedBase = sanitizeFilename(baseName)
+  const filename = ensureMarkdownExtension(sanitizedBase)
+  const documentPath = folderPath
+    ? toPosixPath(`${folderPath}/${filename}`)
+    : toPosixPath(filename)
 
-  if (index >= 0) {
-    const updatedRecord = { ...documents[index], title, updatedAt: timestamp }
-    documents[index] = updatedRecord
-    await writeMetadata([...documents, ...folders])
-    return updatedRecord
+  // Check if path exists
+  const existing = db
+    .prepare("SELECT document_path FROM documents WHERE document_path = ?")
+    .get(documentPath)
+
+  if (!existing) {
+    return documentPath
   }
 
-  const newRecord: DocumentRecord = {
-    id: randomUUID(),
-    kind: "document",
-    title,
-    documentPath,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  }
-
-  documents.push(newRecord)
-  await writeMetadata([...documents, ...folders])
-  return newRecord
-}
-
-async function resolveDocumentPath(baseName: string) {
-  const filename = ensureMarkdownExtension(baseName)
-  const documentPath = toPosixPath(filename)
-  const absolutePath = path.join(MARKDOWN_DIR, documentPath)
-  return { documentPath, absolutePath }
-}
-
-async function findAvailableDocumentPath(baseName: string) {
+  // Find available name with suffix
   let attempt = 0
-
   while (attempt < 1000) {
     const suffix = attempt === 0 ? "" : `-${attempt}`
-    const candidateBase = `${baseName}${suffix}`
-    const { documentPath, absolutePath } = await resolveDocumentPath(candidateBase)
+    const candidateFilename = `${sanitizedBase}${suffix}.md`
+    const candidatePath = folderPath
+      ? toPosixPath(`${folderPath}/${candidateFilename}`)
+      : toPosixPath(candidateFilename)
 
-    try {
-      await access(absolutePath)
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        return { documentPath, absolutePath }
-      }
-      throw error
+    const existingCandidate = db
+      .prepare("SELECT document_path FROM documents WHERE document_path = ?")
+      .get(candidatePath)
+
+    if (!existingCandidate) {
+      return candidatePath
     }
 
     attempt += 1
@@ -413,68 +244,99 @@ export async function createMarkdownFile(
     throw new MarkdownFileOperationError("Title must contain alphanumeric characters", 422)
   }
 
-  await ensureMarkdownDirectory()
+  const db = getDatabase()
 
-  let documentPath: string
-  let absolutePath: string
-
+  // Validate folder exists if folderPath is provided
   if (folderPath) {
-    // Create file in specified folder
     const sanitizedFolderPath = sanitizeFolderPath(folderPath)
-
     if (!sanitizedFolderPath) {
       throw new MarkdownFileOperationError("Invalid folder path", 422)
     }
 
-    const filename = ensureMarkdownExtension(sanitizedBase)
-    documentPath = toPosixPath(`${sanitizedFolderPath}/${filename}`)
-    absolutePath = path.join(MARKDOWN_DIR, documentPath)
+    const folderExists = db
+      .prepare("SELECT id FROM folders WHERE folder_path = ?")
+      .get(sanitizedFolderPath)
 
-    // Ensure the folder exists
-    const folderAbsolutePath = path.dirname(absolutePath)
-    await mkdir(folderAbsolutePath, { recursive: true })
-
-    // Check if file already exists (unless overwrite is true)
-    if (!overwrite) {
-      try {
-        await access(absolutePath)
-        // File exists, find available name
-        let attempt = 0
-        while (attempt < 1000) {
-          const suffix = attempt === 0 ? "" : `-${attempt}`
-          const candidateFilename = `${sanitizedBase}${suffix}.md`
-          const candidatePath = toPosixPath(`${sanitizedFolderPath}/${candidateFilename}`)
-          const candidateAbsolutePath = path.join(MARKDOWN_DIR, candidatePath)
-          try {
-            await access(candidateAbsolutePath)
-            attempt += 1
-          } catch {
-            documentPath = candidatePath
-            absolutePath = candidateAbsolutePath
-            break
-          }
-        }
-        if (attempt >= 1000) {
-          throw new MarkdownFileOperationError("Unable to create a unique filename", 500)
-        }
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-          throw error
-        }
-      }
+    if (!folderExists) {
+      throw new MarkdownFileOperationError("Folder does not exist", 404)
     }
-  } else {
-    // Create file at root level (existing behavior)
-    const resolved = overwrite
-      ? await resolveDocumentPath(sanitizedBase)
-      : await findAvailableDocumentPath(sanitizedBase)
-    documentPath = resolved.documentPath
-    absolutePath = resolved.absolutePath
   }
 
-  await writeFile(absolutePath, content ?? "", "utf-8")
-  const record = await upsertRecordTitle(documentPath, title)
-  return documentRecordToMeta(record, false)
+  const transaction = db.transaction(() => {
+    const filename = ensureMarkdownExtension(sanitizedBase)
+    let documentPath: string
+
+    if (folderPath) {
+      const sanitizedFolderPath = sanitizeFolderPath(folderPath)!
+      documentPath = toPosixPath(`${sanitizedFolderPath}/${filename}`)
+
+      if (!overwrite) {
+        // Check if file exists
+        const existing = db
+          .prepare("SELECT id FROM documents WHERE document_path = ?")
+          .get(documentPath)
+
+        if (existing) {
+          documentPath = findAvailableDocumentPath(db, sanitizedBase, sanitizedFolderPath)
+        }
+      }
+    } else {
+      documentPath = overwrite
+        ? toPosixPath(filename)
+        : findAvailableDocumentPath(db, sanitizedBase)
+    }
+
+    // Check if overwriting
+    if (overwrite) {
+      const existing = db
+        .prepare("SELECT id FROM documents WHERE document_path = ?")
+        .get(documentPath)
+
+      if (existing) {
+        // Update existing
+        const timestamp = new Date().toISOString()
+        db.prepare(
+          "UPDATE documents SET title = ?, content = ?, updated_at = ? WHERE document_path = ?"
+        ).run(title, content ?? "", timestamp, documentPath)
+
+        const updated = db
+          .prepare("SELECT * FROM documents WHERE document_path = ?")
+          .get(documentPath) as {
+          id: string
+          title: string
+          document_path: string
+          content: string
+          created_at: string
+          updated_at: string
+        }
+
+        return documentRecordToMeta(updated, false)
+      }
+    }
+
+    // Create new document
+    const id = randomUUID()
+    const timestamp = new Date().toISOString()
+
+    db.prepare(
+      "INSERT INTO documents (id, title, document_path, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run(id, title, documentPath, content ?? "", timestamp, timestamp)
+
+    const created = db
+      .prepare("SELECT * FROM documents WHERE id = ?")
+      .get(id) as {
+      id: string
+      title: string
+      document_path: string
+      content: string
+      created_at: string
+      updated_at: string
+    }
+
+    return documentRecordToMeta(created, false)
+  })
+
+  return transaction()
 }
 
 export async function createFolder(folderPathInput: string) {
@@ -483,57 +345,78 @@ export async function createFolder(folderPathInput: string) {
     throw new MarkdownFileOperationError("Folder name must contain alphanumeric characters", 422)
   }
 
-  await ensureMarkdownDirectory()
+  const db = getDatabase()
 
   const parentSegments = segments.slice(0, -1)
   const baseName = segments[segments.length - 1]
   const parentRelativePath = parentSegments.join("/")
 
+  // Validate parent folder exists if there is a parent
   if (parentRelativePath.length > 0) {
-    const parentAbsolutePath = path.join(MARKDOWN_DIR, parentRelativePath)
-    await mkdir(parentAbsolutePath, { recursive: true })
-  }
+    const parentExists = db
+      .prepare("SELECT id FROM folders WHERE folder_path = ?")
+      .get(parentRelativePath)
 
-  let folderRelativePath = ""
-  let attempt = 0
-
-  while (attempt < 1000) {
-    const suffix = attempt === 0 ? "" : `-${attempt}`
-    const candidateName = `${baseName}${suffix}`
-    const candidateRelativePath = parentRelativePath
-      ? `${parentRelativePath}/${candidateName}`
-      : candidateName
-    const candidateAbsolutePath = path.join(MARKDOWN_DIR, candidateRelativePath)
-
-    try {
-      await mkdir(candidateAbsolutePath, { recursive: false })
-      folderRelativePath = toPosixPath(candidateRelativePath)
-      break
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code
-      if (code === "EEXIST") {
-        attempt += 1
-        continue
-      }
-      throw error
+    if (!parentExists) {
+      throw new MarkdownFileOperationError("Parent folder does not exist", 404)
     }
   }
 
-  if (!folderRelativePath) {
-    throw new MarkdownFileOperationError("Unable to create a unique folder name", 500)
-  }
+  const transaction = db.transaction(() => {
+    let folderRelativePath = ""
+    let attempt = 0
 
-  const records = await syncMetadataWithFilesystem()
-  const folderRecord = records.find(
-    (candidate): candidate is FolderRecord =>
-      isFolderRecord(candidate) && candidate.folderPath === folderRelativePath
-  )
+    while (attempt < 1000) {
+      const suffix = attempt === 0 ? "" : `-${attempt}`
+      const candidateName = `${baseName}${suffix}`
+      const candidateRelativePath = parentRelativePath
+        ? `${parentRelativePath}/${candidateName}`
+        : candidateName
+      const normalizedPath = toPosixPath(candidateRelativePath)
 
-  if (!folderRecord) {
-    throw new MarkdownFileOperationError("Failed to create folder metadata", 500)
-  }
+      // Check if folder exists
+      const existing = db
+        .prepare("SELECT id FROM folders WHERE folder_path = ?")
+        .get(normalizedPath)
 
-  return folderRecord
+      if (!existing) {
+        folderRelativePath = normalizedPath
+        break
+      }
+
+      attempt += 1
+    }
+
+    if (!folderRelativePath) {
+      throw new MarkdownFileOperationError("Unable to create a unique folder name", 500)
+    }
+
+    const id = randomUUID()
+    const timestamp = new Date().toISOString()
+
+    db.prepare(
+      "INSERT INTO folders (id, folder_path, created_at, updated_at) VALUES (?, ?, ?, ?)"
+    ).run(id, folderRelativePath, timestamp, timestamp)
+
+    const created = db
+      .prepare("SELECT * FROM folders WHERE id = ?")
+      .get(id) as {
+      id: string
+      folder_path: string
+      created_at: string
+      updated_at: string
+    }
+
+    return {
+      id: created.id,
+      kind: "folder" as const,
+      folderPath: created.folder_path,
+      createdAt: created.created_at,
+      updatedAt: created.updated_at,
+    }
+  })
+
+  return transaction()
 }
 
 export async function renameMarkdownFile(id: string, proposedTitle: string) {
@@ -542,75 +425,94 @@ export async function renameMarkdownFile(id: string, proposedTitle: string) {
     throw new MarkdownFileOperationError("Title must contain alphanumeric characters", 422)
   }
 
-  const records = await syncMetadataWithFilesystem()
-  const documents = records.filter(isDocumentRecord)
-  const folders = records.filter(isFolderRecord)
-  const index = documents.findIndex((record) => record.id === id)
-  if (index === -1) {
+  const db = getDatabase()
+
+  // Get existing document
+  const existing = db
+    .prepare("SELECT * FROM documents WHERE id = ?")
+    .get(id) as
+    | {
+        id: string
+        title: string
+        document_path: string
+        content: string
+        created_at: string
+        updated_at: string
+      }
+    | undefined
+
+  if (!existing) {
     throw new MarkdownFileOperationError("Document not found", 404)
   }
 
-  const record = documents[index]
   const sanitizedBase = sanitizeFilename(title)
   if (!sanitizedBase) {
     throw new MarkdownFileOperationError("Title must contain alphanumeric characters", 422)
   }
 
-  const nextFilename = ensureMarkdownExtension(sanitizedBase)
-  const parentDir = path.posix.dirname(record.documentPath)
-  const nextDocumentPath = parentDir === "." ? nextFilename : `${parentDir}/${nextFilename}`
-  const currentAbsolutePath = path.join(MARKDOWN_DIR, record.documentPath)
-  const nextAbsolutePath = path.join(MARKDOWN_DIR, nextDocumentPath)
+  const transaction = db.transaction(() => {
+    const nextFilename = ensureMarkdownExtension(sanitizedBase)
+    const parentDir = path.posix.dirname(existing.document_path)
+    const nextDocumentPath =
+      parentDir === "." ? nextFilename : `${parentDir}/${nextFilename}`
 
-  if (currentAbsolutePath !== nextAbsolutePath) {
-    try {
-      await access(nextAbsolutePath)
-      throw new MarkdownFileOperationError(
-        "A document with that title already exists",
-        409
-      )
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-        throw error
+    // Check if new path already exists (and it's not the same document)
+    if (nextDocumentPath !== existing.document_path) {
+      const conflict = db
+        .prepare("SELECT id FROM documents WHERE document_path = ? AND id != ?")
+        .get(nextDocumentPath, id)
+
+      if (conflict) {
+        throw new MarkdownFileOperationError("A document with that title already exists", 409)
       }
     }
 
-    await rename(currentAbsolutePath, nextAbsolutePath)
-  }
+    const timestamp = new Date().toISOString()
 
-  const timestamp = new Date().toISOString()
-  const updatedRecord: DocumentRecord = {
-    ...record,
-    title,
-    documentPath: toPosixPath(nextDocumentPath),
-    updatedAt: timestamp,
-  }
+    db.prepare(
+      "UPDATE documents SET title = ?, document_path = ?, updated_at = ? WHERE id = ?"
+    ).run(title, nextDocumentPath, timestamp, id)
 
-  documents[index] = updatedRecord
-  await writeMetadata([...documents, ...folders])
+    const updated = db
+      .prepare("SELECT * FROM documents WHERE id = ?")
+      .get(id) as {
+      id: string
+      title: string
+      document_path: string
+      content: string
+      created_at: string
+      updated_at: string
+    }
 
-  return documentRecordToMeta(updatedRecord, false)
+    return documentRecordToMeta(updated, false)
+  })
+
+  return transaction()
 }
 
 export async function deleteMarkdownFile(id: string) {
-  const records = await syncMetadataWithFilesystem()
-  const documents = records.filter(isDocumentRecord)
-  const folders = records.filter(isFolderRecord)
-  const index = documents.findIndex((record) => record.id === id)
+  const db = getDatabase()
 
-  if (index === -1) {
+  const existing = db
+    .prepare("SELECT * FROM documents WHERE id = ?")
+    .get(id) as
+    | {
+        id: string
+        title: string
+        document_path: string
+        content: string
+        created_at: string
+        updated_at: string
+      }
+    | undefined
+
+  if (!existing) {
     throw new MarkdownFileOperationError("Document not found", 404)
   }
 
-  const record = documents[index]
-  const absolutePath = path.join(MARKDOWN_DIR, record.documentPath)
+  db.prepare("DELETE FROM documents WHERE id = ?").run(id)
 
-  await rm(absolutePath, { force: true })
-
-  documents.splice(index, 1)
-  await writeMetadata([...documents, ...folders])
-
-  return documentRecordToMeta(record, false)
+  return documentRecordToMeta(existing, false)
 }
 
 export async function deleteFolder(folderPathInput: string) {
@@ -619,28 +521,32 @@ export async function deleteFolder(folderPathInput: string) {
     throw new MarkdownFileOperationError("Invalid folder path", 422)
   }
 
-  const absolutePath = path.join(MARKDOWN_DIR, sanitized)
-  try {
-    await rm(absolutePath, { recursive: true, force: true })
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code
-    if (code === "ENOENT") {
-      throw new MarkdownFileOperationError("Folder not found", 404)
-    }
-    throw error
+  const db = getDatabase()
+
+  // Check if folder exists
+  const folder = db
+    .prepare("SELECT id FROM folders WHERE folder_path = ?")
+    .get(sanitized) as { id: string } | undefined
+
+  if (!folder) {
+    throw new MarkdownFileOperationError("Folder not found", 404)
   }
 
-  const records = await readMetadata()
-  const remainingRecords = records.filter((record) => {
-    if (isDocumentRecord(record)) {
-      return !record.documentPath.startsWith(`${sanitized}/`) && record.documentPath !== sanitized
-    }
-    if (isFolderRecord(record)) {
-      return record.folderPath !== sanitized && !record.folderPath.startsWith(`${sanitized}/`)
-    }
-    return true
+  const transaction = db.transaction(() => {
+    // Delete all documents in this folder and subfolders
+    db.prepare("DELETE FROM documents WHERE document_path = ? OR document_path LIKE ?").run(
+      sanitized,
+      `${sanitized}/%`
+    )
+
+    // Delete all subfolders
+    db.prepare("DELETE FROM folders WHERE folder_path = ? OR folder_path LIKE ?").run(
+      sanitized,
+      `${sanitized}/%`
+    )
+
+    return sanitized
   })
 
-  await writeMetadata(remainingRecords)
-  return sanitized
+  return transaction()
 }
