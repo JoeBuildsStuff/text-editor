@@ -39,11 +39,9 @@ export function CodeBlock(props: NodeViewProps) {
       <CopyButton
         textToCopy={props.node.textContent}
         successMessage="Code copied to clipboard"
-        tooltipText="Copy code"
         iconSize={16}
         className="absolute right-2 top-3.5 size-6"
         variant="ghost"
-        showTooltip={true}
       />
       <Separator className='absolute top-13 left-0 right-0' />
       <pre>
