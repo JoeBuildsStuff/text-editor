@@ -37,10 +37,12 @@ import {
   FilePlus as FilePlusIcon,
   FolderX,
   Trash2,
+  Terminal,
 } from "lucide-react"
-import { SidebarLogo } from "@/components/app-sidebar-logo"
+import { SidebarLogo } from "@/components/sidebar/app-sidebar-logo"
 import { usePathname, useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
+import Link from "next/link"
 
 import { type TreeViewElement } from "@/components/ui/file-tree"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -721,6 +723,21 @@ export function AppSidebar() {
         <SidebarHeader className="">
           <SidebarLogo />
         </SidebarHeader>
+
+        <SidebarGroup>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <Link href="/terminal">
+                    <SidebarMenuButton className="w-full justify-start">
+                      <Terminal className="size-4" />
+                      <span>Terminal</span>
+                    </SidebarMenuButton>
+                  </Link>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
 
 
         <SidebarContent className="flex flex-col">
