@@ -1,14 +1,7 @@
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import {
-  FileIcon,
-  FolderIcon,
-  FilePlusIcon,
-  FolderPlusIcon,
-  Trash2Icon,
-  ArrowLeftIcon,
-} from "lucide-react"
+import { FileIcon, FolderIcon, ArrowLeftIcon } from "lucide-react"
 
 export default function HelpPage() {
   return (
@@ -184,4 +177,3 @@ export default function HelpPage() {
     </div>
   )
 }
-

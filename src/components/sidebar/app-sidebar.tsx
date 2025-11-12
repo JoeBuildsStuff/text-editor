@@ -31,7 +31,6 @@ import {
   File as FileIcon,
   Folder as FolderIcon,
   FolderOpenIcon,
-  FolderPlus as FolderPlusIcon,
   FilePlus as FilePlusIcon,
   FolderX,
   Trash2,
