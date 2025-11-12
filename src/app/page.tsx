@@ -1,8 +1,5 @@
-export default function Home() {
+import { redirect } from "next/navigation"
 
-  return (
-    <div>
-      {/* TODO: Add a welcome message here */}
-    </div>
-  )
+export default function Home() {
+  redirect("/documents")
 }

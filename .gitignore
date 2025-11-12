@@ -43,3 +43,7 @@ next-env.d.ts
 # database
 server/documents.db
 server/documents.db-*
+
+# user documents (keep .gitkeep to maintain directory structure)
+server/documents/**
+!server/documents/.gitkeep
