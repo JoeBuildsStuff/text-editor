@@ -1,16 +1,11 @@
-import Tiptap from "@/components/tiptap/tiptap";
+import { CopyButton } from "@/components/ui/copy-button";
 
 export default function DocumentsPage() {
 
-const markdownContent = `
-# Hello World
-
-This is a test of the Tiptap editor.
-`
-
   return (
-    <div className="flex max-w-4xl mx-auto h-full w-full">
-      <Tiptap content={markdownContent} />
+    <div className="">
+      {/* TODO: Add a list of documents here */}
+      <CopyButton textToCopy="Hello World" />
     </div>
   );
 }
