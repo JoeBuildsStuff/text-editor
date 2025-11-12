@@ -31,12 +31,12 @@ import {
   File as FileIcon,
   Folder as FolderIcon,
   FolderOpenIcon,
-
   FolderPlus as FolderPlusIcon,
   FilePlus as FilePlusIcon,
   FolderX,
   Trash2,
   Terminal,
+  Pencil,
 } from "lucide-react"
 import { SidebarLogo } from "@/components/sidebar/app-sidebar-logo"
 import { usePathname, useRouter } from "next/navigation"
@@ -54,6 +54,16 @@ import {
 } from "@/components/ui/context-menu"
 import { toast } from "sonner"
 import Spinner from "@/components/ui/spinner"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
 
 const MARKDOWN_EXTENSION = /\.md$/i
 
@@ -178,6 +188,8 @@ function renderCollapsibleTree(
     onCreateFolder: (folderPath?: string) => void
     onDeleteFolder: (folderPath: string) => void
     onDeleteDocument: (documentId: string, slug?: string) => void
+    onRenameFolder: (folderPath: string, currentName: string) => void
+    onRenameDocument: (documentId: string, currentName: string) => void
     isNested?: boolean
   }
 ) {
@@ -241,6 +253,13 @@ function renderCollapsibleTree(
               <>
                 <ContextMenuSeparator />
                 <ContextMenuItem
+                  disabled={options.isActionPending}
+                  onSelect={() => options.onRenameFolder(folderPath, element.name)}
+                >
+                  <Pencil className="size-4" />
+                  Rename Folder
+                </ContextMenuItem>
+                <ContextMenuItem
                   variant="destructive"
                   disabled={options.isActionPending}
                   onSelect={() => options.onDeleteFolder(folderPath)}
@@ -274,6 +293,17 @@ function renderCollapsibleTree(
       <>
         <ContextMenuTrigger asChild>{fileButton}</ContextMenuTrigger>
         <ContextMenuContent>
+          <ContextMenuItem
+            disabled={options.isActionPending}
+            onSelect={() => {
+              if (element.documentId) {
+                options.onRenameDocument(element.documentId, element.name)
+              }
+            }}
+          >
+            <Pencil className="size-4" />
+            Rename Document
+          </ContextMenuItem>
           <ContextMenuItem
             variant="destructive"
             disabled={options.isActionPending}
@@ -315,6 +345,12 @@ export function AppSidebar() {
   const [filesError, setFilesError] = useState<string | null>(null)
   const [isActionPending, startActionTransition] = useTransition()
   const [openFolders, setOpenFolders] = useState<Set<string>>(new Set())
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false)
+  const [renameType, setRenameType] = useState<"document" | "folder">("document")
+  const [renameId, setRenameId] = useState<string>("")
+  const [renamePath, setRenamePath] = useState<string>("")
+  const [renameCurrentName, setRenameCurrentName] = useState<string>("")
+  const [renameNewName, setRenameNewName] = useState<string>("")
 
   const loadDocuments = useCallback(
     async ({
@@ -708,6 +744,108 @@ export function AppSidebar() {
     triggerCreateFolder()
   }, [triggerCreateFolder])
 
+  const handleRenameFolder = useCallback((folderPath: string, currentName: string) => {
+    setRenameType("folder")
+    setRenamePath(folderPath)
+    setRenameCurrentName(currentName)
+    setRenameNewName(currentName)
+    setRenameDialogOpen(true)
+  }, [])
+
+  const handleRenameDocument = useCallback((documentId: string, currentName: string) => {
+    setRenameType("document")
+    setRenameId(documentId)
+    setRenameCurrentName(currentName)
+    setRenameNewName(currentName)
+    setRenameDialogOpen(true)
+  }, [])
+
+  const handleRenameSubmit = useCallback(async () => {
+    if (!renameNewName.trim() || renameNewName.trim() === renameCurrentName) {
+      setRenameDialogOpen(false)
+      return
+    }
+
+    if (isActionPending) return
+
+    startActionTransition(async () => {
+      try {
+        if (renameType === "folder") {
+          const response = await fetch("/api/markdown", {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              type: "folder",
+              folderPath: renamePath,
+              newName: renameNewName.trim(),
+            }),
+          })
+
+          if (!response.ok) {
+            const body = await response.json().catch(() => ({}))
+            throw new Error(body.error ?? "Failed to rename folder")
+          }
+
+          await loadDocuments({ silent: true })
+          const folderName = renameNewName.trim()
+          toast.success(`Renamed folder to "${folderName}"`)
+        } else {
+          const response = await fetch("/api/markdown", {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              id: renameId,
+              title: renameNewName.trim(),
+            }),
+          })
+
+          if (!response.ok) {
+            const body = await response.json().catch(() => ({}))
+            throw new Error(body.error ?? "Failed to rename document")
+          }
+
+          const data = await response.json()
+          const document = data.document as { slug?: string; title?: string } | null
+
+          await loadDocuments({ silent: true })
+
+          if (document?.slug && selectedSlug) {
+            const encodedPath = document.slug
+              .split("/")
+              .map((segment) => encodeURIComponent(segment))
+              .join("/")
+            router.replace(`/documents/${encodedPath}`)
+          }
+
+          const label = document?.title ?? renameNewName.trim()
+          toast.success(`Renamed document to "${label}"`)
+        }
+
+        setRenameDialogOpen(false)
+      } catch (error) {
+        console.error(error)
+        toast.error(
+          error instanceof Error ? error.message : "Unable to rename"
+        )
+      }
+    })
+  }, [
+    renameType,
+    renameId,
+    renamePath,
+    renameNewName,
+    renameCurrentName,
+    isActionPending,
+    startActionTransition,
+    loadDocuments,
+    selectedSlug,
+    router,
+  ])
+
   return (
     <>
       <Sidebar>
@@ -796,6 +934,8 @@ export function AppSidebar() {
                     onCreateFolder: triggerCreateFolder,
                     onDeleteFolder: triggerDeleteFolder,
                     onDeleteDocument: triggerDeleteDocument,
+                    onRenameFolder: handleRenameFolder,
+                    onRenameDocument: handleRenameDocument,
                   })}
                 </SidebarMenu>
               )}
@@ -807,6 +947,49 @@ export function AppSidebar() {
           {/* footer content here */}
         </SidebarFooter>
       </Sidebar>
+
+      <Dialog open={renameDialogOpen} onOpenChange={setRenameDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Rename {renameType === "folder" ? "Folder" : "Document"}
+            </DialogTitle>
+            <DialogDescription>
+              Enter a new name for {renameType === "folder" ? "the folder" : "the document"}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Input
+              value={renameNewName}
+              onChange={(e) => setRenameNewName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  handleRenameSubmit()
+                } else if (e.key === "Escape") {
+                  setRenameDialogOpen(false)
+                }
+              }}
+              placeholder={`Enter ${renameType === "folder" ? "folder" : "document"} name`}
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setRenameDialogOpen(false)}
+              disabled={isActionPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleRenameSubmit}
+              disabled={isActionPending || !renameNewName.trim() || renameNewName.trim() === renameCurrentName}
+            >
+              {isActionPending ? "Renaming..." : "Rename"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

@@ -583,6 +583,122 @@ export async function deleteMarkdownFile(id: string) {
   return documentRecordToMeta(existing, false)
 }
 
+export async function renameFolder(folderPathInput: string, newNameInput: string) {
+  const sanitizedOldPath = sanitizeFolderPath(folderPathInput)
+  if (!sanitizedOldPath) {
+    throw new MarkdownFileOperationError("Invalid folder path", 422)
+  }
+
+  const newNameSegments = sanitizeFolderSegments(newNameInput)
+  if (!newNameSegments.length) {
+    throw new MarkdownFileOperationError("Folder name must contain alphanumeric characters", 422)
+  }
+
+  const db = getDatabase()
+
+  // Check if folder exists
+  const folder = db
+    .prepare("SELECT id FROM folders WHERE folder_path = ?")
+    .get(sanitizedOldPath) as { id: string } | undefined
+
+  if (!folder) {
+    throw new MarkdownFileOperationError("Folder not found", 404)
+  }
+
+  // Build new folder path
+  const parentSegments = sanitizedOldPath.split("/").slice(0, -1)
+  const newBaseName = newNameSegments[0]
+  const newFolderPath = parentSegments.length > 0
+    ? `${parentSegments.join("/")}/${newBaseName}`
+    : newBaseName
+
+  // Check if new path already exists
+  const existing = db
+    .prepare("SELECT id FROM folders WHERE folder_path = ?")
+    .get(newFolderPath)
+
+  if (existing) {
+    throw new MarkdownFileOperationError("A folder with that name already exists", 409)
+  }
+
+  // Rename the folder directory
+  const oldAbsolutePath = path.join(MARKDOWN_DIR, sanitizedOldPath)
+  const newAbsolutePath = path.join(MARKDOWN_DIR, newFolderPath)
+  
+  try {
+    await rename(oldAbsolutePath, newAbsolutePath)
+  } catch (error) {
+    throw new MarkdownFileOperationError(
+      `Failed to rename folder: ${error instanceof Error ? error.message : "Unknown error"}`,
+      500
+    )
+  }
+
+  // Get all documents and nested folders before updating database
+  const documents = db
+    .prepare("SELECT id, document_path FROM documents WHERE document_path LIKE ?")
+    .all(`${sanitizedOldPath}/%`) as Array<{ id: string; document_path: string }>
+
+  const nestedFolders = db
+    .prepare("SELECT folder_path FROM folders WHERE folder_path LIKE ? AND folder_path != ?")
+    .all(`${sanitizedOldPath}/%`, sanitizedOldPath) as Array<{ folder_path: string }>
+
+  // Rename all document files
+  for (const doc of documents) {
+    const newDocPath = doc.document_path.replace(sanitizedOldPath, newFolderPath)
+    const oldDocAbsolutePath = getAbsoluteFilePath(doc.document_path)
+    const newDocAbsolutePath = getAbsoluteFilePath(newDocPath)
+    
+    try {
+      await rename(oldDocAbsolutePath, newDocAbsolutePath)
+    } catch (error) {
+      // Log but continue - file might not exist
+      console.warn(`Failed to rename document file: ${doc.document_path}`, error)
+    }
+  }
+
+  // Update database in transaction
+  const timestamp = new Date().toISOString()
+  const transaction = db.transaction(() => {
+    // Update the folder itself first
+    db.prepare("UPDATE folders SET folder_path = ?, updated_at = ? WHERE folder_path = ?").run(
+      newFolderPath,
+      timestamp,
+      sanitizedOldPath
+    )
+
+    // Update all nested folder paths
+    for (const nestedFolder of nestedFolders) {
+      const newNestedPath = nestedFolder.folder_path.replace(sanitizedOldPath, newFolderPath)
+      db.prepare("UPDATE folders SET folder_path = ?, updated_at = ? WHERE folder_path = ?").run(
+        newNestedPath,
+        timestamp,
+        nestedFolder.folder_path
+      )
+    }
+
+    // Update all document paths
+    for (const doc of documents) {
+      const newDocPath = doc.document_path.replace(sanitizedOldPath, newFolderPath)
+      db.prepare("UPDATE documents SET document_path = ?, updated_at = ? WHERE id = ?").run(
+        newDocPath,
+        timestamp,
+        doc.id
+      )
+    }
+
+    return {
+      id: folder.id,
+      kind: "folder" as const,
+      folderPath: newFolderPath,
+      createdAt: new Date().toISOString(),
+      updatedAt: timestamp,
+    }
+  })
+
+  return transaction()
+}
+
 export async function deleteFolder(folderPathInput: string) {
   const sanitized = sanitizeFolderPath(folderPathInput)
   if (!sanitized) {
