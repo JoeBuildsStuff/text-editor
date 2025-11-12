@@ -675,10 +675,6 @@ export function AppSidebar() {
   const triggerDeleteDocument = useCallback(
     (documentId: string, slug?: string) => {
       if (!documentId || isActionPending) return
-      const confirmed = window.confirm(
-        "Delete this document? This action cannot be undone."
-      )
-      if (!confirmed) return
       startActionTransition(() => {
         deleteDocumentById(documentId, slug).catch((error) => {
           console.error(error)
@@ -694,11 +690,6 @@ export function AppSidebar() {
   const triggerDeleteFolder = useCallback(
     (folderPath: string) => {
       if (!folderPath || isActionPending) return
-      const folderName = folderPath.split("/").pop() ?? folderPath
-      const confirmed = window.confirm(
-        `Delete the folder "${folderName}" and all of its contents? This action cannot be undone.`
-      )
-      if (!confirmed) return
       startActionTransition(() => {
         deleteFolderAtPath(folderPath).catch((error) => {
           console.error(error)
@@ -727,6 +718,16 @@ export function AppSidebar() {
         <SidebarGroup>
             <SidebarGroupContent>
               <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton 
+                    className="w-full justify-start"
+                    onClick={handleCreateDocument}
+                    disabled={isActionPending}
+                  >
+                    <FilePlus className="size-4" />
+                    <span>New Document</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
                 <SidebarMenuItem>
                   <Link href="/terminal">
                     <SidebarMenuButton className="w-full justify-start">
