@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
 
 import { SignInForm } from "@/components/auth/sign-in-form";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,7 +21,9 @@ export default async function SignInPage() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <SignInForm />
+        <Suspense fallback={<div className="flex items-center justify-center py-8"><div className="text-sm text-muted-foreground">Loading...</div></div>}>
+          <SignInForm />
+        </Suspense>
       </CardContent>
       <CardFooter className="flex items-center justify-center text-sm text-muted-foreground">
         <span className="mr-1">Don&apos;t have an account?</span>

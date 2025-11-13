@@ -15,7 +15,7 @@ export default function HelpPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Help & Instructions</h1>
           <p className="text-muted-foreground mt-1">
-            Learn how to use the text editor and manage your documents
+            Learn how to use the text editor and manage your documents!
           </p>
         </div>
       </div>
