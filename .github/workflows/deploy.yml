@@ -42,12 +42,6 @@ jobs:
               echo "pnpm not found on server; please install pnpm" >&2
               exit 1
             fi
-            PNPM_VERSION="$(pnpm --version 2>/dev/null || echo '')"
-            PNPM_MAJOR="${PNPM_VERSION%%.*}"
-            if [ -n "$PNPM_MAJOR" ] && [ "$PNPM_MAJOR" -ge 10 ]; then
-              echo "Approving pnpm build scripts for better-sqlite3 (pnpm v$PNPM_VERSION)"
-              pnpm approve-builds better-sqlite3
-            fi
             
             # Clean + rebuild the correct way
             echo "Cleaning node_modules, .pnpm, and .next directories"
@@ -57,9 +51,31 @@ jobs:
             echo "Installing dependencies"
             pnpm install --frozen-lockfile
             
-            # Force rebuild better-sqlite3 to ensure native bindings are compiled
-            echo "Rebuilding better-sqlite3 with --force flag"
-            pnpm rebuild better-sqlite3 --force
+            # Manually build better-sqlite3 native bindings
+            # pnpm v10 may block scripts even with onlyBuiltDependencies, so we build manually
+            echo "Building better-sqlite3 native bindings"
+            BETTER_SQLITE3_DIR=$(find node_modules/.pnpm -type d -path "*/better-sqlite3@*/node_modules/better-sqlite3" 2>/dev/null | head -n 1)
+            if [ -n "$BETTER_SQLITE3_DIR" ] && [ -d "$BETTER_SQLITE3_DIR" ]; then
+              echo "Found better-sqlite3 at: $BETTER_SQLITE3_DIR"
+              cd "$BETTER_SQLITE3_DIR"
+              # Run the install script to build native bindings
+              # Using npm run install will execute the install script without reinstalling deps
+              if command -v npm >/dev/null 2>&1; then
+                echo "Running npm install script to build native bindings..."
+                npm run install 2>&1 || npm install --ignore-scripts=false 2>&1 || true
+              elif command -v node-gyp >/dev/null 2>&1; then
+                echo "Building with node-gyp..."
+                node-gyp rebuild
+              else
+                # Try using pnpm exec to run node-gyp
+                echo "Building with pnpm exec node-gyp..."
+                pnpm exec node-gyp rebuild || true
+              fi
+              cd "$APP_DIR"
+            else
+              echo "Warning: better-sqlite3 directory not found, trying pnpm rebuild" >&2
+              pnpm rebuild better-sqlite3 2>&1 || true
+            fi
 
             # Verify the binding exists
             BINDING_PATH=$(find node_modules/.pnpm/better-sqlite3@*/node_modules/better-sqlite3/build/Release -name "better_sqlite3.node" 2>/dev/null | head -n 1)
