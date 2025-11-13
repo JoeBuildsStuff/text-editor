@@ -17,7 +17,7 @@ export default async function DocumentDetailPage({ params }: DocumentPageProps) 
   if (!session) {
     redirect(`/sign-in?callbackUrl=${encodeURIComponent(`/documents/${id}`)}`)
   }
-  const file = await getMarkdownFileById(id)
+  const file = await getMarkdownFileById(id, session.user.id)
 
   if (!file) {
     notFound()

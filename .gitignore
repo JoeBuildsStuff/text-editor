@@ -43,6 +43,8 @@ next-env.d.ts
 # database
 server/documents.db
 server/documents.db-*
+server/auth.sqlite
+server/auth.sqlite-*
 
 # user documents (keep .gitkeep to maintain directory structure)
 server/documents/**

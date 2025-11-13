@@ -14,7 +14,7 @@ export default async function DocumentsPage() {
     redirect("/sign-in")
   }
 
-  const { documents, folders } = await listMarkdownItems({ includeContent: false })
+  const { documents, folders } = await listMarkdownItems({ includeContent: false, userId: session.user.id })
 
   const hasContent = documents.length > 0 || folders.length > 0
 

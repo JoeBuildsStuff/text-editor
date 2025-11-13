@@ -14,12 +14,12 @@ import {
   updateMarkdownFileContent,
 } from "@/lib/markdown-files";
 
-function ensureAuthenticated(request: Request) {
-  const session = getSessionFromHeaders(request.headers);
+async function ensureAuthenticated(request: Request) {
+  const session = await getSessionFromHeaders(request.headers);
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  return null;
+  return session;
 }
 
 const payloadSchema = z
@@ -76,9 +76,9 @@ const deleteSchema = z.union([
 ]);
 
 export async function POST(request: Request) {
-  const unauthorized = ensureAuthenticated(request);
-  if (unauthorized) {
-    return unauthorized;
+  const session = await ensureAuthenticated(request);
+  if (!session || "error" in session) {
+    return session as NextResponse;
   }
   let payload: z.infer<typeof payloadSchema>;
 
@@ -92,7 +92,7 @@ export async function POST(request: Request) {
 
   try {
     if (payload.type === "folder") {
-      const folder = await createFolder(payload.folderPath as string);
+      const folder = await createFolder(payload.folderPath as string, session.user.id);
       return NextResponse.json({ folder }, { status: 201 });
     }
 
@@ -100,6 +100,7 @@ export async function POST(request: Request) {
     const document = await createMarkdownFile(
       title,
       payload.content ?? "",
+      session.user.id,
       payload.overwrite,
       payload.folderPath
     );
@@ -120,12 +121,12 @@ export async function POST(request: Request) {
 }
 
 export async function GET(request: Request) {
-  const unauthorized = ensureAuthenticated(request);
-  if (unauthorized) {
-    return unauthorized;
+  const session = await ensureAuthenticated(request);
+  if (!session || "error" in session) {
+    return session as NextResponse;
   }
   try {
-    const { documents, folders } = await listMarkdownItems({ includeContent: false });
+    const { documents, folders } = await listMarkdownItems({ includeContent: false, userId: session.user.id });
 
     return NextResponse.json({ documents, folders });
   } catch (error) {
@@ -135,9 +136,9 @@ export async function GET(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const unauthorized = ensureAuthenticated(request);
-  if (unauthorized) {
-    return unauthorized;
+  const session = await ensureAuthenticated(request);
+  if (!session || "error" in session) {
+    return session as NextResponse;
   }
   try {
     const data = await request.json();
@@ -145,20 +146,20 @@ export async function PATCH(request: Request) {
     // Check if this is a content update (has content field) or rename (has title field)
     if ("content" in data && !("title" in data)) {
       const payload = updateContentSchema.parse(data);
-      const document = await updateMarkdownFileContent(payload.id, payload.content);
+      const document = await updateMarkdownFileContent(payload.id, payload.content, session.user.id);
       return NextResponse.json({ document });
     }
     
     // Check if this is a folder rename
     if ("type" in data && data.type === "folder" && "newName" in data) {
       const payload = renameFolderSchema.parse(data);
-      const folder = await renameFolder(payload.folderPath, payload.newName);
+      const folder = await renameFolder(payload.folderPath, payload.newName, session.user.id);
       return NextResponse.json({ folder });
     }
     
     // Otherwise, treat as document rename
     const payload = renameSchema.parse(data);
-    const document = await renameMarkdownFile(payload.id, payload.title);
+    const document = await renameMarkdownFile(payload.id, payload.title, session.user.id);
     return NextResponse.json({ document });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -174,19 +175,19 @@ export async function PATCH(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const unauthorized = ensureAuthenticated(request);
-  if (unauthorized) {
-    return unauthorized;
+  const session = await ensureAuthenticated(request);
+  if (!session || "error" in session) {
+    return session as NextResponse;
   }
   try {
     const data = await request.json();
     const payload = deleteSchema.parse(data);
     if ("folderPath" in payload) {
-      const folderPath = await deleteFolder(payload.folderPath);
+      const folderPath = await deleteFolder(payload.folderPath, session.user.id);
       return NextResponse.json({ folderPath });
     }
 
-    const document = await deleteMarkdownFile(payload.id);
+    const document = await deleteMarkdownFile(payload.id, session.user.id);
 
     return NextResponse.json({ document });
   } catch (error) {

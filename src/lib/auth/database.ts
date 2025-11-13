@@ -1,11 +1,20 @@
 import Database from "better-sqlite3";
+import path from "node:path";
+import { mkdir } from "node:fs/promises";
 
 const globalForAuthDb = globalThis as unknown as {
   authDb?: Database;
 };
 
 function createDatabase(): Database {
-  const databaseFile = process.env.AUTH_SQLITE_PATH ?? "auth.sqlite";
+  const databaseFile = process.env.AUTH_SQLITE_PATH ?? path.join(process.cwd(), "server", "auth.sqlite");
+  
+  // Ensure the server directory exists
+  const serverDir = path.dirname(databaseFile);
+  mkdir(serverDir, { recursive: true }).catch(() => {
+    // Ignore errors if directory already exists
+  });
+  
   const db = new Database(databaseFile);
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
