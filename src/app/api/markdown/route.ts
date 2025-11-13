@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { getSessionFromHeaders } from "@/lib/auth/session";
+import type { AuthSession } from "@/lib/auth/types";
 import {
   createFolder,
   createMarkdownFile,
@@ -14,7 +15,7 @@ import {
   updateMarkdownFileContent,
 } from "@/lib/markdown-files";
 
-async function ensureAuthenticated(request: Request) {
+async function ensureAuthenticated(request: Request): Promise<AuthSession | NextResponse> {
   const session = await getSessionFromHeaders(request.headers);
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -76,10 +77,11 @@ const deleteSchema = z.union([
 ]);
 
 export async function POST(request: Request) {
-  const session = await ensureAuthenticated(request);
-  if (!session || "error" in session) {
-    return session as NextResponse;
+  const sessionOrResponse = await ensureAuthenticated(request);
+  if (sessionOrResponse instanceof NextResponse) {
+    return sessionOrResponse;
   }
+  const session = sessionOrResponse as AuthSession;
   let payload: z.infer<typeof payloadSchema>;
 
   try {
@@ -121,10 +123,11 @@ export async function POST(request: Request) {
 }
 
 export async function GET(request: Request) {
-  const session = await ensureAuthenticated(request);
-  if (!session || "error" in session) {
-    return session as NextResponse;
+  const sessionOrResponse = await ensureAuthenticated(request);
+  if (sessionOrResponse instanceof NextResponse) {
+    return sessionOrResponse;
   }
+  const session = sessionOrResponse as AuthSession;
   try {
     const { documents, folders } = await listMarkdownItems({ includeContent: false, userId: session.user.id });
 
@@ -136,10 +139,11 @@ export async function GET(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const session = await ensureAuthenticated(request);
-  if (!session || "error" in session) {
-    return session as NextResponse;
+  const sessionOrResponse = await ensureAuthenticated(request);
+  if (sessionOrResponse instanceof NextResponse) {
+    return sessionOrResponse;
   }
+  const session = sessionOrResponse as AuthSession;
   try {
     const data = await request.json();
     
@@ -175,10 +179,11 @@ export async function PATCH(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const session = await ensureAuthenticated(request);
-  if (!session || "error" in session) {
-    return session as NextResponse;
+  const sessionOrResponse = await ensureAuthenticated(request);
+  if (sessionOrResponse instanceof NextResponse) {
+    return sessionOrResponse;
   }
+  const session = sessionOrResponse as AuthSession;
   try {
     const data = await request.json();
     const payload = deleteSchema.parse(data);

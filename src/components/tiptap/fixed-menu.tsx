@@ -253,8 +253,6 @@ const FixedMenu = ({ editor }: FixedMenuProps) => {
                         size='sm'
                         variant='ghost'
                         className='text-xs'
-                        tooltipText='Copy content'
-                        tooltipCopiedText='Copied!'
                         successMessage='Content copied to clipboard'
                         errorMessage='Failed to copy content'
                     />

@@ -19,13 +19,13 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 
-type SignInValues = z.infer<typeof signInSchema>;
-
 const signInSchema = z.object({
   email: z.string().email("Enter a valid email address"),
   password: z.string().min(1, "Password is required"),
   rememberMe: z.boolean().default(true),
 });
+
+type SignInValues = z.input<typeof signInSchema>;
 
 export function SignInForm() {
   const router = useRouter();
@@ -41,10 +41,11 @@ export function SignInForm() {
 
   const onSubmit = async (values: SignInValues) => {
     try {
+      const parsed = signInSchema.parse(values);
       await authClient.signIn.email({
-        email: values.email,
-        password: values.password,
-        rememberMe: values.rememberMe,
+        email: parsed.email,
+        password: parsed.password,
+        rememberMe: parsed.rememberMe,
       });
       toast.success("Signed in successfully");
       const callbackUrl = searchParams?.get("callbackUrl") ?? "/documents";

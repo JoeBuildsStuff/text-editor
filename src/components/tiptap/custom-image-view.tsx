@@ -3,7 +3,7 @@
 import { NodeViewWrapper, ReactNodeViewProps } from '@tiptap/react'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { ImageIcon, AlertCircle } from 'lucide-react'
-import { Spinner } from '@/components/ui/spinner'
+import Spinner from '@/components/ui/spinner'
 
 export const CustomImageView = ({ node, selected }: ReactNodeViewProps) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null)

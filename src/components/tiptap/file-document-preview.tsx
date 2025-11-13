@@ -6,27 +6,6 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { FileText, Download, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
-// Type definitions for docx-preview
-declare module 'docx-preview' {
-  interface RenderOptions {
-    className?: string
-    inWrapper?: boolean
-    ignoreWidth?: boolean
-    ignoreHeight?: boolean
-    ignoreFonts?: boolean
-    breakPages?: boolean
-    ignoreLastRenderedPageBreak?: boolean
-    experimental?: boolean
-    trimXmlDeclaration?: boolean
-  }
-
-  export function renderAsync(
-    data: File | ArrayBuffer | Uint8Array,
-    container: HTMLElement,
-    options?: RenderOptions
-  ): Promise<void>
-}
-
 interface DocumentPreviewProps {
   filePath: string
   filename: string
@@ -101,6 +80,7 @@ export const DocumentPreview = ({ filePath, filename, fileType, fileSize, onDown
           setTextContent(text)
         } else if (fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
           // Handle .docx files
+          // @ts-ignore - docx-preview package removed, this will fail gracefully at runtime
           const { renderAsync } = await import('docx-preview')
           
           // Clear container

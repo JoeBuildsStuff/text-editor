@@ -12,7 +12,7 @@ import {
 } from 'lucide-react'
 import { FileNodeAttributes } from './file-node'
 import { X, Download } from 'lucide-react'
-import { Spinner } from '@/components/ui/spinner'
+import Spinner from '@/components/ui/spinner'
 
 export const FileNodeView = ({ node, updateAttributes, deleteNode, selected }: ReactNodeViewProps) => {
   const attrs = node.attrs as FileNodeAttributes

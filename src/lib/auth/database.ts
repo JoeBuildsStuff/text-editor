@@ -1,12 +1,13 @@
 import Database from "better-sqlite3";
+import type { Database as DatabaseType } from "better-sqlite3";
 import path from "node:path";
 import { mkdir } from "node:fs/promises";
 
 const globalForAuthDb = globalThis as unknown as {
-  authDb?: Database;
+  authDb?: DatabaseType;
 };
 
-function createDatabase(): Database {
+function createDatabase(): DatabaseType {
   const databaseFile = process.env.AUTH_SQLITE_PATH ?? path.join(process.cwd(), "server", "auth.sqlite");
   
   // Ensure the server directory exists
@@ -42,7 +43,7 @@ function createDatabase(): Database {
   return db;
 }
 
-export function getAuthDb(): Database {
+export function getAuthDb(): DatabaseType {
   if (!globalForAuthDb.authDb) {
     globalForAuthDb.authDb = createDatabase();
   }
