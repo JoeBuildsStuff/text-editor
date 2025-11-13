@@ -1,8 +1,9 @@
-import { notFound } from "next/navigation"
+import { notFound, redirect } from "next/navigation"
 
 import { DocumentTitleEditor } from "@/components/documents/document-title-editor"
 import { DocumentEditor } from "@/components/documents/document-editor"
 import { getMarkdownFileById } from "@/lib/markdown-files"
+import { getServerSession } from "@/lib/auth/session"
 
 type DocumentPageProps = {
   params: Promise<{
@@ -12,6 +13,10 @@ type DocumentPageProps = {
 
 export default async function DocumentDetailPage({ params }: DocumentPageProps) {
   const { id } = await params
+  const session = getServerSession()
+  if (!session) {
+    redirect(`/sign-in?callbackUrl=${encodeURIComponent(`/documents/${id}`)}`)
+  }
   const file = await getMarkdownFileById(id)
 
   if (!file) {

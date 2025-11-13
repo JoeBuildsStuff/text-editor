@@ -1,11 +1,19 @@
-import { listMarkdownItems } from "@/lib/markdown-files"
 import Link from "next/link"
+import { redirect } from "next/navigation"
 import { File as FileIcon, Folder as FolderIcon } from "lucide-react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatDistanceToNow } from "date-fns"
+
 import { EmptyDocumentsState } from "@/components/documents/empty-documents-state"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { getServerSession } from "@/lib/auth/session"
+import { listMarkdownItems } from "@/lib/markdown-files"
 
 export default async function DocumentsPage() {
+  const session = getServerSession()
+  if (!session) {
+    redirect("/sign-in")
+  }
+
   const { documents, folders } = await listMarkdownItems({ includeContent: false })
 
   const hasContent = documents.length > 0 || folders.length > 0
