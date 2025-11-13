@@ -42,10 +42,10 @@ jobs:
               echo "pnpm not found on server; please install pnpm" >&2
               exit 1
             fi
-            pnpm install --frozen-lockfile
-            # Approve and rebuild better-sqlite3 native module
-            pnpm approve-builds better-sqlite3 --yes 2>/dev/null || true
-            pnpm rebuild better-sqlite3 || pnpm install --frozen-lockfile --force
+            # Install dependencies (allow build scripts for native modules)
+            pnpm install --frozen-lockfile --ignore-scripts=false
+            # Rebuild better-sqlite3 to ensure native module is compiled
+            pnpm rebuild better-sqlite3 || echo "Warning: better-sqlite3 rebuild failed, continuing..."
             pnpm build
 
             # Restart service (try system service, then user service)
