@@ -48,17 +48,31 @@ jobs:
               echo "Approving pnpm build scripts for better-sqlite3 (pnpm v$PNPM_VERSION)"
               pnpm approve-builds better-sqlite3
             fi
-            # Clean any existing build artifacts and locks
-            rm -rf .next .next.lock 2>/dev/null || true
+            
+            # Clean + rebuild the correct way
+            echo "Cleaning node_modules, .pnpm, and .next directories"
+            rm -rf node_modules .pnpm .next .next.lock 2>/dev/null || true
 
-            # Install deps (better-sqlite3 build scripts will run automatically
-            # because it's in pnpm.onlyBuiltDependencies in package.json)
+            # Install deps
+            echo "Installing dependencies"
             pnpm install --frozen-lockfile
             
-            # Explicitly rebuild better-sqlite3 to ensure native bindings are compiled
-            # This is necessary in case the build scripts didn't run during install
-            pnpm rebuild better-sqlite3
+            # Force rebuild better-sqlite3 to ensure native bindings are compiled
+            echo "Rebuilding better-sqlite3 with --force flag"
+            pnpm rebuild better-sqlite3 --force
 
+            # Verify the binding exists
+            BINDING_PATH=$(find node_modules/.pnpm/better-sqlite3@*/node_modules/better-sqlite3/build/Release -name "better_sqlite3.node" 2>/dev/null | head -n 1)
+            if [ -n "$BINDING_PATH" ] && [ -f "$BINDING_PATH" ]; then
+              echo "✓ Verified better-sqlite3 native binding exists at: $BINDING_PATH"
+            else
+              echo "✗ Warning: better-sqlite3 native binding not found at expected location" >&2
+              echo "  Searched in: node_modules/.pnpm/better-sqlite3@*/node_modules/better-sqlite3/build/Release/" >&2
+              # Don't exit here, let the build attempt continue - it will fail with a clearer error if needed
+            fi
+
+            # Build the application
+            echo "Building application"
             pnpm build
 
             # Restart service (try system service, then user service)
