@@ -37,15 +37,30 @@ jobs:
             git reset --hard origin/main
 
             # Install and build
-            if command -v corepack >/dev/null 2>&1; then corepack enable || true; fi
+            # corepack enable skipped to avoid EACCES on symlink in /usr/bin
             if ! command -v pnpm >/dev/null 2>&1; then
               echo "pnpm not found on server; please install pnpm" >&2
               exit 1
             fi
+<<<<<<< HEAD
             # Install dependencies (allow build scripts for native modules)
             pnpm install --frozen-lockfile --ignore-scripts=false
             # Rebuild better-sqlite3 to ensure native module is compiled
             pnpm rebuild better-sqlite3 || echo "Warning: better-sqlite3 rebuild failed, continuing..."
+=======
+            # Clean any existing build artifacts and locks
+            rm -rf .next .next.lock 2>/dev/null || true
+
+            # Allow better-sqlite3 install scripts for native binding
+            pnpm config set allow-scripts better-sqlite3 --location project
+
+            # Install deps with scripts enabled so native modules compile
+            pnpm install --frozen-lockfile --ignore-scripts=false
+
+            # Rebuild better-sqlite3 to ensure native module is present
+            pnpm rebuild better-sqlite3 || true
+
+>>>>>>> a10a0eb (ci: make deployment robust for better-sqlite3; clean .next lock; skip corepack; allow scripts; rebuild native)
             pnpm build
 
             # Restart service (try system service, then user service)
