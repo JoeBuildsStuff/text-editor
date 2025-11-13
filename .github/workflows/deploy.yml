@@ -1,0 +1,58 @@
+name: Deploy on push to main
+on:
+  push:
+    branches: [main]
+
+env:
+  APP_DIR: /home/joe/apps/text-editor
+  SERVICE_NAME: text-editor
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (metadata only)
+        uses: actions/checkout@v4
+
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            cd "$APP_DIR"
+
+            # Ensure repo is up to date
+            if [ ! -d .git ]; then
+              echo "Error: $APP_DIR is not a git repo" >&2
+              exit 1
+            fi
+            git fetch origin
+            git reset --hard origin/main
+
+            # Install and build
+            if command -v corepack >/dev/null 2>&1; then corepack enable || true; fi
+            if ! command -v pnpm >/dev/null 2>&1; then
+              echo "pnpm not found on server; please install pnpm" >&2
+              exit 1
+            fi
+            pnpm install --frozen-lockfile
+            pnpm build
+
+            # Restart service (try system service, then user service)
+            if command -v systemctl >/dev/null 2>&1; then
+              if sudo -n systemctl status "$SERVICE_NAME" >/dev/null 2>&1; then
+                echo "Restarting system service $SERVICE_NAME"
+                sudo -n systemctl restart "$SERVICE_NAME"
+              elif systemctl --user status "$SERVICE_NAME" >/dev/null 2>&1; then
+                echo "Restarting user service $SERVICE_NAME"
+                systemctl --user restart "$SERVICE_NAME"
+              else
+                echo "Warning: service $SERVICE_NAME not found. Skipping restart." >&2
+              fi
+            else
+              echo "systemctl not found; skipping restart" >&2
+            fi
