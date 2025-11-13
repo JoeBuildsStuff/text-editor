@@ -5,8 +5,8 @@ import { SignUpForm } from "@/components/auth/sign-up-form";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { getServerSession } from "@/lib/auth/session";
 
-export default function SignUpPage() {
-  const session = getServerSession();
+export default async function SignUpPage() {
+  const session = await getServerSession();
   if (session) {
     redirect("/documents");
   }

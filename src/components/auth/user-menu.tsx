@@ -24,11 +24,15 @@ export function UserMenu() {
 
   const handleSignOut = async () => {
     try {
-      await authClient.signOut();
+      await authClient.signOut({
+        fetchOptions: {
+          onSuccess: () => {
+            router.push("/sign-in");
+            router.refresh();
+          },
+        },
+      });
       toast.success("Signed out");
-      await sessionState.refetch();
-      router.push("/sign-in");
-      router.refresh();
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Failed to sign out"
@@ -36,7 +40,7 @@ export function UserMenu() {
     }
   };
 
-  if (sessionState.isLoading) {
+  if (sessionState.isPending) {
     return <Skeleton className="h-9 w-24 rounded-full" />;
   }
 

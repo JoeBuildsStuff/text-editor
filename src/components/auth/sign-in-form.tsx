@@ -41,7 +41,11 @@ export function SignInForm() {
 
   const onSubmit = async (values: SignInValues) => {
     try {
-      await authClient.signIn.email(values);
+      await authClient.signIn.email({
+        email: values.email,
+        password: values.password,
+        rememberMe: values.rememberMe,
+      });
       toast.success("Signed in successfully");
       const callbackUrl = searchParams?.get("callbackUrl") ?? "/documents";
       router.push(callbackUrl);

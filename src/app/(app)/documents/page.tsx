@@ -9,7 +9,7 @@ import { getServerSession } from "@/lib/auth/session"
 import { listMarkdownItems } from "@/lib/markdown-files"
 
 export default async function DocumentsPage() {
-  const session = getServerSession()
+  const session = await getServerSession()
   if (!session) {
     redirect("/sign-in")
   }

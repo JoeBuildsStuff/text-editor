@@ -13,7 +13,7 @@ type DocumentPageProps = {
 
 export default async function DocumentDetailPage({ params }: DocumentPageProps) {
   const { id } = await params
-  const session = getServerSession()
+  const session = await getServerSession()
   if (!session) {
     redirect(`/sign-in?callbackUrl=${encodeURIComponent(`/documents/${id}`)}`)
   }

@@ -1,52 +1,58 @@
-import { cookies } from "next/headers";
+import { headers } from "next/headers";
 
-import { SESSION_COOKIE_NAME } from "./constants";
-import { getSessionByToken } from "./store";
+import { auth } from "../auth";
 import type { AuthSession } from "./types";
 
-function parseCookieHeader(cookieHeader: string): Record<string, string> {
-  return cookieHeader.split(/;\s*/).reduce<Record<string, string>>((acc, part) => {
-    if (!part) {
-      return acc;
+export async function getServerSession(): Promise<AuthSession | null> {
+  try {
+    const session = await auth.api.getSession({
+      headers: await headers(),
+    });
+    
+    if (!session?.session || !session?.user) {
+      return null;
     }
-    const [name, ...rest] = part.split("=");
-    if (!name) {
-      return acc;
-    }
-    const value = rest.join("=");
-    let key = name.trim();
-    try {
-      key = decodeURIComponent(key);
-    } catch {
-      // noop
-    }
-    try {
-      acc[key] = decodeURIComponent(value ?? "");
-    } catch {
-      acc[key] = value ?? "";
-    }
-    return acc;
-  }, {});
+
+    // Convert better-auth session format to our AuthSession type
+    return {
+      sessionId: session.session.id,
+      user: {
+        id: session.user.id,
+        email: session.user.email,
+        name: session.user.name ?? null,
+        createdAt: session.user.createdAt.toISOString(),
+      },
+      expiresAt: session.session.expiresAt.toISOString(),
+      rememberMe: session.session.expiresAt.getTime() > Date.now() + 24 * 60 * 60 * 1000, // If expires in more than 1 day, consider it "remember me"
+    };
+  } catch {
+    return null;
+  }
 }
 
-export function getServerSession(): AuthSession | null {
-  const store = cookies();
-  const token = store.get(SESSION_COOKIE_NAME)?.value;
-  if (!token) {
-    return null;
-  }
-  return getSessionByToken(token);
-}
+export async function getSessionFromHeaders(headers: Headers): Promise<AuthSession | null> {
+  try {
+    const session = await auth.api.getSession({
+      headers,
+    });
+    
+    if (!session?.session || !session?.user) {
+      return null;
+    }
 
-export function getSessionFromHeaders(headers: Headers): AuthSession | null {
-  const cookieHeader = headers.get("cookie");
-  if (!cookieHeader) {
+    // Convert better-auth session format to our AuthSession type
+    return {
+      sessionId: session.session.id,
+      user: {
+        id: session.user.id,
+        email: session.user.email,
+        name: session.user.name ?? null,
+        createdAt: session.user.createdAt.toISOString(),
+      },
+      expiresAt: session.session.expiresAt.toISOString(),
+      rememberMe: session.session.expiresAt.getTime() > Date.now() + 24 * 60 * 60 * 1000,
+    };
+  } catch {
     return null;
   }
-  const parsed = parseCookieHeader(cookieHeader);
-  const token = parsed[SESSION_COOKIE_NAME];
-  if (!token) {
-    return null;
-  }
-  return getSessionByToken(token);
 }
