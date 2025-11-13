@@ -20,9 +20,12 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: APP_DIR,SERVICE_NAME
           script_stop: true
           script: |
             set -euo pipefail
+            APP_DIR="${APP_DIR:-/home/joe/apps/text-editor}"
+            SERVICE_NAME="${SERVICE_NAME:-text-editor}"
             cd "$APP_DIR"
 
             # Ensure repo is up to date
