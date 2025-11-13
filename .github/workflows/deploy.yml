@@ -45,14 +45,13 @@ jobs:
             # Clean any existing build artifacts and locks
             rm -rf .next .next.lock 2>/dev/null || true
 
-            # Allow better-sqlite3 install scripts for native binding
-            pnpm config set allow-scripts better-sqlite3 --location project
-
-            # Install deps with scripts enabled so native modules compile
-            pnpm install --frozen-lockfile --ignore-scripts=false
-
-            # Rebuild better-sqlite3 to ensure native module is present
-            pnpm rebuild better-sqlite3 || true
+            # Install deps (better-sqlite3 build scripts will run automatically
+            # because it's in pnpm.onlyBuiltDependencies in package.json)
+            pnpm install --frozen-lockfile
+            
+            # Explicitly rebuild better-sqlite3 to ensure native bindings are compiled
+            # This is necessary in case the build scripts didn't run during install
+            pnpm rebuild better-sqlite3
 
             pnpm build
 
