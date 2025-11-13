@@ -43,6 +43,9 @@ jobs:
               exit 1
             fi
             pnpm install --frozen-lockfile
+            # Approve and rebuild better-sqlite3 native module
+            pnpm approve-builds better-sqlite3 --yes 2>/dev/null || true
+            pnpm rebuild better-sqlite3 || pnpm install --frozen-lockfile --force
             pnpm build
 
             # Restart service (try system service, then user service)
