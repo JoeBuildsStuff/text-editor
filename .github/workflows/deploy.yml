@@ -42,6 +42,12 @@ jobs:
               echo "pnpm not found on server; please install pnpm" >&2
               exit 1
             fi
+            PNPM_VERSION="$(pnpm --version 2>/dev/null || echo '')"
+            PNPM_MAJOR="${PNPM_VERSION%%.*}"
+            if [ -n "$PNPM_MAJOR" ] && [ "$PNPM_MAJOR" -ge 10 ]; then
+              echo "Approving pnpm build scripts for better-sqlite3 (pnpm v$PNPM_VERSION)"
+              pnpm approve-builds better-sqlite3
+            fi
             # Clean any existing build artifacts and locks
             rm -rf .next .next.lock 2>/dev/null || true
 
