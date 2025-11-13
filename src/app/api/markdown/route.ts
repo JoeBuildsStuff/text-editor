@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { getSessionFromHeaders } from "@/lib/auth/session";
 import {
   createFolder,
   createMarkdownFile,
@@ -12,6 +13,14 @@ import {
   renameFolder,
   updateMarkdownFileContent,
 } from "@/lib/markdown-files";
+
+function ensureAuthenticated(request: Request) {
+  const session = getSessionFromHeaders(request.headers);
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  return null;
+}
 
 const payloadSchema = z
   .object({
@@ -67,6 +76,10 @@ const deleteSchema = z.union([
 ]);
 
 export async function POST(request: Request) {
+  const unauthorized = ensureAuthenticated(request);
+  if (unauthorized) {
+    return unauthorized;
+  }
   let payload: z.infer<typeof payloadSchema>;
 
   try {
@@ -106,7 +119,11 @@ export async function POST(request: Request) {
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const unauthorized = ensureAuthenticated(request);
+  if (unauthorized) {
+    return unauthorized;
+  }
   try {
     const { documents, folders } = await listMarkdownItems({ includeContent: false });
 
@@ -118,6 +135,10 @@ export async function GET() {
 }
 
 export async function PATCH(request: Request) {
+  const unauthorized = ensureAuthenticated(request);
+  if (unauthorized) {
+    return unauthorized;
+  }
   try {
     const data = await request.json();
     
@@ -153,6 +174,10 @@ export async function PATCH(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const unauthorized = ensureAuthenticated(request);
+  if (unauthorized) {
+    return unauthorized;
+  }
   try {
     const data = await request.json();
     const payload = deleteSchema.parse(data);
