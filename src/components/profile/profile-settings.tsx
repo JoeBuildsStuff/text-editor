@@ -43,7 +43,6 @@ const profileSchema = z.object({
         .url("Enter a valid image URL"),
       z.literal(""),
     ])
-    .optional()
     .default(""),
 });
 
