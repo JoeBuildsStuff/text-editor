@@ -101,6 +101,23 @@ jobs:
             export SKIP_TYPE_CHECK=true
             pnpm build
 
+            # Determine docker compose command (new vs legacy)
+            if docker compose version >/dev/null 2>&1; then
+              DOCKER_COMPOSE=(docker compose)
+            elif command -v docker-compose >/dev/null 2>&1; then
+              DOCKER_COMPOSE=(docker-compose)
+            else
+              echo "docker compose/compose plugin not found; cannot rebuild container" >&2
+              exit 1
+            fi
+
+            # Rebuild container image and redeploy to ensure fresh code is running
+            echo "Building updated Docker image for text-editor"
+            "${DOCKER_COMPOSE[@]}" -f docker-compose.yml build text-editor
+
+            echo "Recreating text-editor service with latest image"
+            "${DOCKER_COMPOSE[@]}" -f docker-compose.yml up -d --force-recreate text-editor
+
             # Restart service (try system service, then user service)
             if command -v systemctl >/dev/null 2>&1; then
               if sudo -n systemctl status "$SERVICE_NAME" >/dev/null 2>&1; then
