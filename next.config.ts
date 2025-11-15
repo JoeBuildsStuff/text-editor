@@ -5,6 +5,11 @@ const nextConfig: NextConfig = {
   reactCompiler: true,
   // Skip static optimization for API routes that use native modules
   serverExternalPackages: ['better-sqlite3'],
+  // Skip TypeScript type checking during build if SKIP_TYPE_CHECK is set
+  // This can help with memory-constrained environments
+  typescript: {
+    ignoreBuildErrors: process.env.SKIP_TYPE_CHECK === 'true',
+  },
   webpack: (config, { isServer }) => {
     if (isServer) {
       // Mark better-sqlite3 as external to avoid bundling issues

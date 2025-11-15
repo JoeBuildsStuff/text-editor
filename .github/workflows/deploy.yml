@@ -93,7 +93,12 @@ jobs:
             fi
 
             # Build the application
-            echo "Building application"
+            # VPS has limited RAM (2GB), so we skip type checking to save memory
+            # Type checking is a dev-time concern; runtime doesn't need it
+            # Set reasonable memory limit (1.5GB max) for the 2GB VPS
+            echo "Building application (skipping type check on memory-constrained VPS)"
+            export NODE_OPTIONS="--max-old-space-size=1536"
+            export SKIP_TYPE_CHECK=true
             pnpm build
 
             # Restart service (try system service, then user service)
