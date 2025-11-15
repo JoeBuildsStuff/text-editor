@@ -8,6 +8,7 @@ import {
   Moon,
   Settings,
   Sun,
+  User,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTheme } from "next-themes";
@@ -120,9 +121,9 @@ export function UserMenu() {
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem className="font-light" asChild>
-          <Link href="/settings">
-            <Settings className="size-4" strokeWidth={1.5} />
-            <span className="font-light">Settings</span>
+          <Link href="/profile">
+            <User className="size-4" strokeWidth={1.5} />
+            <span className="font-light">Profile</span>
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem
