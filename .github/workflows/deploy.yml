@@ -33,8 +33,13 @@ jobs:
               echo "Error: $APP_DIR is not a git repo" >&2
               exit 1
             fi
-            git fetch origin
-            git reset --hard origin/main
+            # Fetch latest changes and reset to main branch
+            # Use FETCH_HEAD to avoid ambiguous refname issues
+            git fetch origin main
+            git checkout -B main FETCH_HEAD
+            git reset --hard FETCH_HEAD
+            echo "Deployed commit: $(git rev-parse HEAD)"
+            echo "Commit message: $(git log -1 --pretty=%B)"
 
             # Install and build
             # corepack enable skipped to avoid EACCES on symlink in /usr/bin
