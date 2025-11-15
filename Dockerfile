@@ -25,6 +25,10 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 
 # Build Next.js application
+# Skip type checking to save memory on resource-constrained VPS
+# Set memory limit for Node.js build process
+ENV SKIP_TYPE_CHECK=true
+ENV NODE_OPTIONS="--max-old-space-size=1536"
 RUN pnpm build
 
 # Stage 2: Runner - Production image
