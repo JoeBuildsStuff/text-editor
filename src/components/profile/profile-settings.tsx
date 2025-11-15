@@ -46,7 +46,7 @@ const profileSchema = z.object({
     .default(""),
 });
 
-type ProfileValues = z.infer<typeof profileSchema>;
+type ProfileValues = z.input<typeof profileSchema>;
 
 const emailSchema = z.object({
   newEmail: z.string().trim().email("Enter a valid email address"),
@@ -69,7 +69,7 @@ const passwordSchema = z
     path: ["confirmPassword"],
   });
 
-type PasswordValues = z.infer<typeof passwordSchema>;
+type PasswordValues = z.input<typeof passwordSchema>;
 
 type ProfileSettingsProps = {
   user: {
@@ -283,7 +283,7 @@ export function ProfileSettings({ user }: ProfileSettingsProps) {
                       <Input {...field} type="email" autoComplete="email" />
                     </FormControl>
                     <FormDescription>
-                      We'll send a confirmation link to this address.
+                      We&apos;ll send a confirmation link to this address.
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
