@@ -16,11 +16,14 @@ jobs:
 
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
+          BETTER_AUTH_URL: ${{ secrets.BETTER_AUTH_URL }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          envs: APP_DIR,SERVICE_NAME
+          envs: APP_DIR,SERVICE_NAME,BETTER_AUTH_SECRET,BETTER_AUTH_URL
           script_stop: true
           script: |
             set -euo pipefail
@@ -43,14 +46,23 @@ jobs:
 
             # Check if using Docker Compose - if so, Docker handles all building
             if [ -f docker-compose.yml ] && (command -v docker-compose >/dev/null 2>&1 || (command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1)); then
+              # Ensure required env vars are present for docker-compose variable expansion
+              if [ -z "${BETTER_AUTH_SECRET:-}" ]; then
+                echo "Error: BETTER_AUTH_SECRET is not set; required by docker-compose.yml" >&2
+                exit 1
+              fi
+              if [ -z "${BETTER_AUTH_URL:-}" ]; then
+                echo "Error: BETTER_AUTH_URL is not set; required by docker-compose.yml" >&2
+                exit 1
+              fi
               echo "Detected Docker Compose - rebuilding and restarting container"
               # Dockerfile handles all build steps (deps, better-sqlite3, Next.js build)
               if command -v docker-compose >/dev/null 2>&1; then
-                docker-compose build --no-cache text-editor
-                docker-compose up -d text-editor
+                docker-compose build --no-cache text-editor 2>&1
+                docker-compose up -d text-editor 2>&1
               else
-                docker compose build --no-cache text-editor
-                docker compose up -d text-editor
+                docker compose build --no-cache text-editor 2>&1
+                docker compose up -d text-editor 2>&1
               fi
               echo "✓ Docker container rebuilt and restarted"
             else
