@@ -5,7 +5,6 @@ import type { ReactNode } from "react";
 import { AppSidebar } from "@/components/sidebar/app-sidebar";
 import ReportIssueButton from "@/components/report-issue-button";
 import { DynamicBreadcrumbs } from "@/components/dynamic-breadcrumbs";
-import { UserMenu } from "@/components/auth/user-menu";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 
 export default function AppLayout({
@@ -23,7 +22,6 @@ export default function AppLayout({
             <DynamicBreadcrumbs />
           </div>
           <div className="ml-auto flex items-center gap-2">
-            <UserMenu />
             <ReportIssueButton />
           </div>
         </header>

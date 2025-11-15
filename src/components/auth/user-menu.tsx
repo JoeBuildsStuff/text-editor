@@ -2,8 +2,15 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LogOut } from "lucide-react";
+import {
+  ChevronsUpDown,
+  LogOut,
+  Moon,
+  Settings,
+  Sun,
+} from "lucide-react";
 import { toast } from "sonner";
+import { useTheme } from "next-themes";
 
 import { authClient } from "@/lib/auth-client";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -21,6 +28,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 export function UserMenu() {
   const sessionState = authClient.useSession();
   const router = useRouter();
+  const { setTheme, resolvedTheme } = useTheme();
 
   const handleSignOut = async () => {
     try {
@@ -41,7 +49,15 @@ export function UserMenu() {
   };
 
   if (sessionState.isPending) {
-    return <Skeleton className="h-9 w-24 rounded-full" />;
+    return (
+      <div className="flex items-center gap-2">
+        <Skeleton className="h-8 w-8 rounded-full" />
+        <div className="hidden sm:block">
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="mt-1 h-3 w-32" />
+        </div>
+      </div>
+    );
   }
 
   if (!sessionState.data?.user) {
@@ -72,31 +88,68 @@ export function UserMenu() {
           <Avatar className="size-8">
             <AvatarFallback>{initials}</AvatarFallback>
           </Avatar>
-          <span className="hidden text-sm font-medium sm:inline">
-            {displayName}
-          </span>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-56">
-        <DropdownMenuLabel>
-          <div className="flex flex-col">
-            <span className="font-semibold leading-tight">
-              {user.name ?? user.email}
-            </span>
-            <span className="text-muted-foreground text-xs leading-tight">
+          <div className="hidden flex-1 text-left text-sm leading-tight sm:grid">
+            <span className="truncate font-medium">{displayName}</span>
+            <span className="text-muted-foreground truncate text-xs">
               {user.email}
             </span>
           </div>
+          <ChevronsUpDown className="ml-auto hidden size-4 sm:block" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        className="min-w-56 rounded-lg"
+        sideOffset={4}
+      >
+        <DropdownMenuLabel className="p-0 font-normal">
+          <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
+            <Avatar className="size-8">
+              <AvatarFallback>{initials}</AvatarFallback>
+            </Avatar>
+            <div className="grid flex-1 text-left text-sm leading-tight">
+              <span className="truncate font-medium">{displayName}</span>
+              <span className="text-muted-foreground truncate text-xs">
+                {user.email}
+              </span>
+            </div>
+          </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        <DropdownMenuItem className="font-light" asChild>
+          <Link href="/settings">
+            <Settings className="size-4" strokeWidth={1.5} />
+            <span className="font-light">Settings</span>
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() =>
+            setTheme(resolvedTheme === "dark" ? "light" : "dark")
+          }
+          className="font-light"
+        >
+          {resolvedTheme === "dark" ? (
+            <>
+              <Sun className="size-4" strokeWidth={1.5} />
+              <span className="font-light">Toggle Light Mode</span>
+            </>
+          ) : (
+            <>
+              <Moon className="size-4" strokeWidth={1.5} />
+              <span className="font-light">Toggle Dark Mode</span>
+            </>
+          )}
+          <span className="sr-only">Toggle Theme</span>
+        </DropdownMenuItem>
         <DropdownMenuItem
           onSelect={(event) => {
             event.preventDefault();
             handleSignOut();
           }}
+          className="font-light"
         >
-          <LogOut className="size-4" />
-          Sign out
+          <LogOut className="size-4" strokeWidth={1.5} />
+          <span className="font-light">Log out</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

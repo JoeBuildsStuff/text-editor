@@ -63,6 +63,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
+import { UserMenu } from "@/components/auth/user-menu"
 
 const MARKDOWN_EXTENSION = /\.md$/i
 
@@ -943,7 +944,7 @@ export function AppSidebar() {
           
         </SidebarContent>
         <SidebarFooter className="">
-          {/* footer content here */}
+          <UserMenu />
         </SidebarFooter>
       </Sidebar>
 
