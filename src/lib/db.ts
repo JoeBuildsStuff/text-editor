@@ -2,7 +2,7 @@ import Database from "better-sqlite3"
 import path from "node:path"
 import { mkdir } from "node:fs/promises"
 
-const DB_PATH = path.join(process.cwd(), "server", "documents.db")
+const DB_PATH = process.env.DOCUMENTS_SQLITE_PATH ?? path.join(process.cwd(), "server", "documents.db")
 
 let db: Database.Database | null = null
 
@@ -163,4 +163,3 @@ export function closeDatabase() {
     db = null
   }
 }
-

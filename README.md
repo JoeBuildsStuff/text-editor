@@ -55,9 +55,35 @@ This application provides a full-featured markdown editor where you can:
 - **Folder creation**: Folders are stored as first-class database entries. You can create empty folders from the UI or API, and add documents to them later.
 - **Folder deletion**: Folders can be deleted from the UI or API. Deleting a folder recursively removes all nested folders and documents from the database automatically.
 
+## Development Setup
+
+1. **Install dependencies**
+
+   ```bash
+   pnpm install
+   ```
+
+2. **Create your env file** – copy `.env.example` to `.env.local` (or `.env`) and set at least:
+   - `BETTER_AUTH_SECRET`: generate one with `pnpm auth:secret` or `openssl rand -hex 32`
+   - `BETTER_AUTH_URL` / `NEXT_PUBLIC_BETTER_AUTH_URL`: usually `http://localhost:3000`
+
+3. **Create the local SQLite databases** – this repo does not commit `documents.db` or `auth.sqlite`, so run:
+
+   ```bash
+   pnpm db:init
+   ```
+
+   This command does two things:
+   - `pnpm db:setup` – runs `scripts/setup-databases.ts` which creates `server/documents.db`, applies the schema from `sql/documents-schema.sql`, seeds demo data when the tables are empty, and drops a sample markdown file under `server/documents/`.
+   - `pnpm auth:migrate` – runs the Better Auth CLI against `src/lib/auth.ts` to create the required tables inside `server/auth.sqlite`.
+
+   Run those scripts individually if you only need to refresh one database.
+
+4. **Start the dev server** (next section) and sign up/in with email + password. The seeded markdown document lives under the demo folder in the sidebar.
+
 ## Getting Started
 
-First, run the development server:
+After completing the steps above, run the development server:
 
 ```bash
 npm run dev

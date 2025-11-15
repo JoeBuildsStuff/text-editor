@@ -1,0 +1,47 @@
+services:
+  text-editor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: text-editor
+    restart: always
+    # Port mapping not needed - Traefik routes via Docker network
+    volumes:
+      # Persist database and documents
+      - /home/joe/data/text-editor:/app/server
+    environment:
+      - NODE_ENV=production
+      - NEXT_TELEMETRY_DISABLED=1
+      - PORT=3000
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
+      - BETTER_AUTH_URL=${BETTER_AUTH_URL:-https://text-editor.joe-taylor.me}
+      - NEXT_PUBLIC_BETTER_AUTH_URL=${BETTER_AUTH_URL:-https://text-editor.joe-taylor.me}
+    networks:
+      - traefik_proxy
+    labels:
+      # Enable Traefik
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik_proxy"
+      
+      # HTTP router (redirects to HTTPS)
+      - "traefik.http.routers.text-editor.rule=Host(`text-editor.joe-taylor.me`)"
+      - "traefik.http.routers.text-editor.entrypoints=web"
+      - "traefik.http.routers.text-editor.middlewares=text-editor-https-redirect"
+      
+      # HTTPS redirect middleware
+      - "traefik.http.middlewares.text-editor-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.text-editor-https-redirect.redirectscheme.permanent=true"
+      
+      # HTTPS router (secure)
+      - "traefik.http.routers.text-editor-secure.rule=Host(`text-editor.joe-taylor.me`)"
+      - "traefik.http.routers.text-editor-secure.entrypoints=websecure"
+      - "traefik.http.routers.text-editor-secure.tls=true"
+      - "traefik.http.routers.text-editor-secure.tls.certresolver=letsencrypt"
+      
+      # Service configuration
+      - "traefik.http.services.text-editor.loadbalancer.server.port=3000"
+
+networks:
+  traefik_proxy:
+    external: true
+
