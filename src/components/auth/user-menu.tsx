@@ -24,12 +24,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 export function UserMenu() {
   const sessionState = authClient.useSession();
   const router = useRouter();
   const { setTheme, resolvedTheme } = useTheme();
-
+  const isMobile = useIsMobile();
+  
   const handleSignOut = async () => {
     try {
       await authClient.signOut({
@@ -101,6 +103,7 @@ export function UserMenu() {
         align="end"
         className="min-w-56 rounded-lg"
         sideOffset={4}
+        side={isMobile ? "bottom" : "right"}
       >
         <DropdownMenuLabel className="p-0 font-normal">
           <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
