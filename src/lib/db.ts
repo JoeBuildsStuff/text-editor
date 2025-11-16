@@ -17,10 +17,13 @@ export function getDatabase(): Database.Database {
     // Ignore errors if directory already exists
   })
 
-  db = new Database(DB_PATH)
+  db = new Database(DB_PATH, {
+    timeout: 5000, // 5 second timeout for busy database
+  })
   
-  // Enable foreign keys
+  // Enable foreign keys and busy timeout
   db.pragma("foreign_keys = ON")
+  db.pragma("busy_timeout = 5000")
   
   // Initialize schema
   initializeSchema(db)

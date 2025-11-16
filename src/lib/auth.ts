@@ -17,9 +17,12 @@ function getDatabase(): Database.Database {
       // Ignore errors if directory already exists
     });
     
-    globalForAuthDb.authDb = new Database(databaseFile);
+    globalForAuthDb.authDb = new Database(databaseFile, {
+      timeout: 5000, // 5 second timeout for busy database
+    });
     globalForAuthDb.authDb.pragma("journal_mode = WAL");
     globalForAuthDb.authDb.pragma("foreign_keys = ON");
+    globalForAuthDb.authDb.pragma("busy_timeout = 5000"); // Also set busy timeout via pragma
   }
   return globalForAuthDb.authDb;
 }

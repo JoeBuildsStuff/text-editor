@@ -24,7 +24,15 @@ RUN pnpm install --frozen-lockfile
 # Copy source code and config files
 COPY . .
 
+# Initialize database files for build-time (Next.js tries to access them during build)
+# These will be replaced by real databases at runtime via volume mount
+# Using the setup script ensures proper schema initialization
+RUN mkdir -p server/documents && \
+    pnpm db:setup || true
+
 # Build Next.js application
+# Set SKIP_TYPE_CHECK to avoid type checking during build (handled by CI)
+ENV SKIP_TYPE_CHECK=true
 RUN pnpm build
 
 # Stage 2: Runner - Production image
