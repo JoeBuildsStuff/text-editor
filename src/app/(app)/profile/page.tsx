@@ -15,7 +15,7 @@ export default async function ProfilePage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Profile</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          Manage how you appear across the app and keep your account secure.
+          Manage how you appear across the app and keep your account secure
         </p>
       </div>
       <ProfileSettings
