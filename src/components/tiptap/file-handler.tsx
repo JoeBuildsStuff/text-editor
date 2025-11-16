@@ -3,16 +3,12 @@
 import { Editor } from '@tiptap/react'
 import { FileHandler } from '@tiptap/extension-file-handler'
 import { FileNodeAttributes } from './file-node'
-import { uploadFile } from './supabase-file-manager'
+import { uploadFile } from './file-storage-manager'
+import type { TiptapFileUploadConfig } from './types'
 
 interface FileHandlerConfigProps {
   onFileDrop?: (files: File[]) => void
-  fileUploadConfig?: {
-    supabaseBucket?: string
-    pathPrefix?: string
-    maxFileSize?: number
-    allowedMimeTypes?: string[]
-  }
+  fileUploadConfig?: TiptapFileUploadConfig
 }
 
 export const createFileHandlerConfig = ({ onFileDrop, fileUploadConfig }: FileHandlerConfigProps = {}) => {
@@ -23,10 +19,9 @@ export const createFileHandlerConfig = ({ onFileDrop, fileUploadConfig }: FileHa
     
     for (const file of files) {
       try {
-        // Upload all files to Supabase using unified upload function
+        // Upload all files through the unified storage upload function
         const result = await uploadFile(file, {
-          bucket: fileUploadConfig?.supabaseBucket || 'ai-transcriber-files',
-          pathPrefix: fileUploadConfig?.pathPrefix || 'notes',
+          pathPrefix: fileUploadConfig?.pathPrefix,
           maxFileSize: fileUploadConfig?.maxFileSize,
           allowedMimeTypes: fileUploadConfig?.allowedMimeTypes
         })

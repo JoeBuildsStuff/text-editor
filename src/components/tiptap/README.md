@@ -1,14 +1,14 @@
 # Tiptap File Handling System
 
-A unified file handling system for Tiptap editor that eliminates base64 storage and uses Supabase storage for all file types.
+A unified file handling system for the Tiptap editor that eliminates base64 blobs and streams every upload through the local `/api/files/*` endpoints backed by the filesystem.
 
 ## 🎯 **Overview**
 
 The system provides a single, consistent approach for handling all file types in Tiptap:
-- **Images, documents, archives** - All uploaded to Supabase storage
+- **Images, documents, archives** - All uploaded through the `/api/files/upload` route and written to `server/uploads/<userId>`
 - **No base64 data** - Only file paths stored in editor content
 - **Unified architecture** - Single pattern for all file operations
-- **Secure access** - Signed URLs generated on-demand
+- **Secure access** - Download URLs are generated on-demand and validated per user
 - **Automatic cleanup** - Files removed from storage when deleted
 
 ## 🚀 **Key Benefits**
@@ -28,7 +28,7 @@ The system provides a single, consistent approach for handling all file types in
 
 ### **Unified File Manager**
 
-The system now uses a consolidated `supabase-file-manager.ts` that provides:
+The system now uses a consolidated `file-storage-manager.ts` that provides:
 
 - **Single import point** for all file operations
 - **Consistent error handling** across all functions
@@ -40,7 +40,7 @@ The system now uses a consolidated `supabase-file-manager.ts` that provides:
 
 #### 1. **FileHandler Extension** (`file-handler.tsx`)
 - Intercepts all file drops and paste events
-- Uploads files to Supabase storage via unified file manager
+- Uploads files via the unified file manager and `/api/files/upload`
 - Determines appropriate node type (Image vs FileNode)
 - Inserts nodes with file paths (not binary data)
 
@@ -51,18 +51,18 @@ The system now uses a consolidated `supabase-file-manager.ts` that provides:
 - Tracks upload status
 
 #### 3. **FileNodeView** (`file-node-view.tsx`)
-- Renders file nodes with Supabase integration
+- Renders file nodes with local storage integration
 - Fetches signed URLs from `/api/files/serve`
 - Provides download and preview functionality
 - Shows loading and error states
 
 #### 4. **CustomImageView** (`custom-image-view.tsx`)
-- Renders images stored in Supabase storage
-- Uses unified file manager for signed URLs
+- Renders images stored through `/api/files`
+- Uses the unified file manager for scoped URLs
 - Consistent with the unified file system
 
 #### 5. **DocumentPreview** (`file-document-preview.tsx`)
-- Renders document previews from Supabase storage
+- Renders document previews from local storage
 - Supports `.txt`, `.docx`, and `.pdf` files
 - Fetches file data via unified file manager
 
@@ -71,33 +71,36 @@ The system now uses a consolidated `supabase-file-manager.ts` that provides:
 The system uses these API endpoints, but all interactions are now handled through the unified file manager:
 
 #### **`/api/files/upload`**
-- Uploads all file types to Supabase storage
+- Uploads all file types to the local filesystem
 - Validates file type and size
 - Creates organized file paths: `{userId}/{category}/{timestamp}-{filename}`
 - Returns file path for storage in editor content
 
 #### **`/api/files/serve`**
-- Generates signed URLs for secure file access
+- Generates short-lived URLs for secure file access
 - Verifies user authentication and ownership
-- 1-hour expiration for security
-- Used by both images and file nodes
+- Returns `/api/files/raw?path=...` download URLs for both images and file nodes
 
 #### **`/api/files/delete`**
-- Removes files from Supabase storage
+- Removes files from local storage
 - Verifies user ownership before deletion
 - Automatic cleanup when files are removed from editor
 
+#### **`/api/files/raw`**
+- Streams the actual file bytes with the correct `Content-Type`
+- Requires the same authenticated session as the metadata routes
+
 ### **Storage System**
 
-#### **Bucket Structure**
+#### **Directory Layout**
 ```
-ai-transcriber-files/
+server/uploads/
 ├── {userId}/
 │   ├── notes/
 │   │   ├── {timestamp}-{filename}.jpg
 │   │   ├── {timestamp}-{filename}.pdf
 │   │   └── {timestamp}-{filename}.docx
-│   └── other-categories/
+│   └── other-groups/
 └── ...
 ```
 
@@ -113,19 +116,19 @@ Example: 401cc145-0c7b-4825-a14b-090c8ba30f7e/notes/1756851600392-document.pdf
 - **Formats**: JPEG, PNG, GIF, WebP
 - **Node Type**: Standard Tiptap Image node
 - **Preview**: Direct browser rendering
-- **Storage**: `ai-transcriber-files` bucket
+- **Storage**: `server/uploads/{userId}/notes/...`
 
 ### **Documents**
 - **Formats**: TXT, PDF, DOCX, XLSX, PPTX, DOC, XLS, PPT
 - **Node Type**: FileNode with `previewType: 'document'`
 - **Preview**: DocumentPreview component
-- **Storage**: `ai-transcriber-files` bucket
+- **Storage**: `server/uploads/{userId}/notes/...`
 
 ### **Archives & Other Files**
 - **Formats**: ZIP, RAR, 7Z, JSON, CSV, HTML, CSS
 - **Node Type**: FileNode with `previewType: 'file'`
 - **Preview**: File information card with download actions
-- **Storage**: `ai-transcriber-files` bucket
+- **Storage**: `server/uploads/{userId}/notes/...`
 
 ## ⚙️ **Configuration**
 
@@ -134,11 +137,10 @@ Example: 401cc145-0c7b-4825-a14b-090c8ba30f7e/notes/1756851600392-document.pdf
 ```typescript
 import { createFileHandlerConfig } from './file-handler'
 import { FileNode } from './file-node'
-import { createFileUploader } from './supabase-file-manager'
+import { createFileUploader } from './file-storage-manager'
 
 const fileHandler = createFileHandlerConfig({
   fileUploadConfig: {
-    supabaseBucket: 'ai-transcriber-files',
     pathPrefix: 'notes',
     maxFileSize: 10 * 1024 * 1024, // 10MB
     allowedMimeTypes: [
@@ -169,7 +171,6 @@ const extensions = [
   content={content}
   onChange={handleChange}
   fileUploadConfig={{
-    supabaseBucket: 'ai-transcriber-files',
     pathPrefix: 'notes',
     maxFileSize: 10 * 1024 * 1024,
     allowedMimeTypes: [/* your file types */]
@@ -181,7 +182,7 @@ const extensions = [
 ### **Editor Configuration**
 
 ```typescript
-import { deleteFile } from './supabase-file-manager'
+import { deleteFile } from './file-storage-manager'
 
 const editor = useEditor({
   extensions,
@@ -190,7 +191,7 @@ const editor = useEditor({
     if (type === 'node' && node?.attrs?.src) {
       const src = node.attrs.src
       
-      // Only cleanup Supabase file paths, not external URLs
+      // Only cleanup local file paths, not external URLs
       if (typeof src === 'string' && !src.startsWith('http') && !src.startsWith('data:')) {
         deleteFile(src).catch(error => {
           console.error('Failed to cleanup deleted file:', error)
@@ -206,21 +207,21 @@ const editor = useEditor({
 ### **Upload Flow**
 1. User drops/pastes file → FileHandler intercepts
 2. FileHandler calls unified file manager's `uploadFile()`
-3. Upload API stores in Supabase, returns file path
+3. Upload API writes file to `server/uploads/<userId>`, returns the relative file path
 4. FileHandler inserts appropriate node with `src: filePath`
-5. Node renders using file path, fetches signed URL on demand
+5. Node renders using file path, fetches a scoped URL on demand
 
 ### **Display Flow**
 1. File node has `src` attribute with file path
 2. FileNodeView/CustomImageView component loads
-3. Fetches signed URL via unified file manager
-4. Displays content using signed URL
+3. Fetches download URL via unified file manager
+4. Displays content using the returned URL
 
 ### **Cleanup Flow**
 1. User deletes file node → `onDelete` event fires
 2. Event handler extracts deleted node's `src` attribute
 3. Unified file manager's `deleteFile()` calls delete API
-4. File removed from Supabase storage
+4. File removed from local storage
 
 ## 🛡️ **Security**
 
@@ -231,10 +232,10 @@ const editor = useEditor({
 - Users can only access files in their own folders
 
 ### **File Access**
-- Signed URLs with 1-hour expiration
-- No direct bucket access from client
-- File type and size validation
-- Path traversal protection
+- Download URLs are generated on demand and scoped to the authenticated user
+- Files are never served directly from the filesystem—everything flows through `/api/files/raw`
+- File type and size validation occurs on both client and server
+- Path traversal protection defends against forged file paths
 
 ## 🧹 **Cleanup System**
 
@@ -247,7 +248,7 @@ import {
   deleteFiles, 
   getFileUrl,
   createFileUploader 
-} from './supabase-file-manager'
+} from './file-storage-manager'
 
 // Upload a file
 const result = await uploadFile(file, { pathPrefix: 'notes' })
@@ -258,7 +259,7 @@ await deleteFile(filePath)
 // Delete multiple files
 await deleteFiles([filePath1, filePath2, filePath3])
 
-// Get signed URL for serving
+// Get download URL for serving
 const urlResult = await getFileUrl(filePath)
 
 // Create custom uploader
@@ -278,14 +279,13 @@ const customUploader = createFileUploader({
 ### **Common Issues**
 
 #### **Files Not Uploading**
-- Check Supabase bucket permissions
-- Verify RLS policies are configured
+- Ensure `server/uploads/` exists and is writable by the Next.js server
 - Check file type is in `allowedMimeTypes`
 - Verify file size is under `maxFileSize`
 
 #### **Files Not Displaying**
 - Check browser console for API errors
-- Verify file exists in storage bucket
+- Verify the relative file path is correct and still present under `server/uploads/{userId}`
 - Check user authentication
 - Verify file ownership
 
@@ -297,7 +297,7 @@ const customUploader = createFileUploader({
 
 ### **Debug Tips**
 1. Check browser console for detailed error messages
-2. Verify Supabase storage bucket exists and is accessible
+2. Verify the local storage directory exists and is accessible
 3. Test with smaller files first
 4. Ensure all API routes are properly configured
 5. Check file type support in configuration
@@ -318,20 +318,19 @@ const customUploader = createFileUploader({
 ## 🚀 **Getting Started**
 
 1. **Install Dependencies**: Ensure all Tiptap extensions are installed
-2. **Configure Supabase**: Create `ai-transcriber-files` storage bucket
-3. **Set Up RLS Policies**: Configure storage policies for user isolation
-4. **Add Extensions**: Include FileNode and FileHandler in your editor
-5. **Configure Upload**: Set up `fileUploadConfig` with your preferences
-6. **Test**: Try uploading different file types
+2. **Prepare Storage**: Make sure the `server/uploads` directory exists (the upload API will create folders per user automatically)
+3. **Add Extensions**: Include FileNode and FileHandler in your editor
+4. **Configure Upload**: Set up `fileUploadConfig` with your preferences
+5. **Test**: Try uploading different file types
 
 ## 🎯 **Migration from Legacy System**
 
 ### **What Changed**
 - `imageUploadConfig` → `fileUploadConfig`
-- All files now use `ai-transcriber-files` bucket
+- Files are written to `server/uploads/<userId>` via the `/api/files` routes
 - Unified API endpoints (`/api/files/*`)
 - Single cleanup system for all file types
-- **Consolidated file operations** into `supabase-file-manager.ts`
+- **Consolidated file operations** into `file-storage-manager.ts`
 
 
 ### **Backward Compatibility**

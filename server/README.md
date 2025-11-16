@@ -9,6 +9,7 @@ The repo intentionally does **not** commit the SQLite files, so every contributo
 - `server/documents.db` – user documents & folders metadata (created by `pnpm db:setup`)
 - `server/auth.sqlite` – Better Auth tables (populated by `pnpm auth:migrate`)
 - `server/documents/` – markdown files for document content
+- `server/uploads/` – binary uploads (images, attachments) written by `/api/files/*`
 - `sql/documents-schema.sql` – authoritative schema for new `documents.db` instances
 - `sql/documents-seed.sql` – optional seed data applied only when the DB is empty
 - `sql/migrations/` – place to store incremental schema migrations (create this directory if it does not exist yet)

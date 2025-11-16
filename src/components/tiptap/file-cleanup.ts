@@ -1,9 +1,9 @@
 /**
- * Utility function for deleting files from Supabase storage
+ * Utility helpers for deleting files from the local storage API.
  */
 
 /**
- * Deletes a file from Supabase storage
+ * Deletes a file from storage
  * @param filePath - The file path to delete
  * @returns Promise that resolves when deletion is complete
  */
@@ -30,7 +30,7 @@ export async function deleteFileFromStorage(filePath: string): Promise<boolean> 
 }
 
 /**
- * Deletes multiple files from Supabase storage
+ * Deletes multiple files from storage
  * @param filePaths - Array of file paths to delete
  * @returns Promise that resolves when all deletions are complete
  */

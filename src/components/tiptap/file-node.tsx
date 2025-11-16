@@ -5,7 +5,7 @@ import { ReactNodeViewRenderer } from '@tiptap/react'
 import { FileNodeView } from './file-node-view'
 
 export interface FileNodeAttributes {
-  src: string // File path in Supabase storage
+  src: string // File path returned by /api/files/upload
   filename: string
   fileSize: number
   fileType: string

@@ -18,7 +18,7 @@ import { useEffect, useState } from 'react'
 import { TiptapProps } from './types'
 import { Image } from '@tiptap/extension-image'
 import { CustomImageView } from './custom-image-view'
-import { deleteFile } from './supabase-file-manager'
+import { deleteFile } from './file-storage-manager'
 import { Markdown } from '@tiptap/markdown'
 
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -90,12 +90,7 @@ const Tiptap = ({
         ...(enableFileNodes ? [
           createFileHandlerConfig({ 
             onFileDrop,
-            fileUploadConfig: fileUploadConfig ? {
-              supabaseBucket: fileUploadConfig.supabaseBucket,
-              pathPrefix: fileUploadConfig.pathPrefix,
-              maxFileSize: fileUploadConfig.maxFileSize,
-              allowedMimeTypes: fileUploadConfig.allowedMimeTypes
-            } : undefined
+            fileUploadConfig
           })
         ] : []),
         
@@ -122,7 +117,7 @@ const Tiptap = ({
       const { type, node } = params
       if (type === 'node' && node?.attrs?.src) {
         const src = node.attrs.src
-        // Only cleanup Supabase file paths, not external URLs
+        // Only cleanup locally stored file paths, not external URLs
         if (typeof src === 'string' && !src.startsWith('http') && !src.startsWith('data:')) {
           deleteFile(src).catch((error: unknown) => {
             console.error('Failed to cleanup deleted file:', error)

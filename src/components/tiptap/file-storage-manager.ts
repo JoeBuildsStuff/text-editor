@@ -1,12 +1,13 @@
+import { ALLOWED_UPLOAD_MIME_TYPES, DEFAULT_UPLOAD_PATH_PREFIX, FILE_UPLOAD_MAX_BYTES } from "@/lib/uploads/config"
+
 /**
- * Unified Supabase File Manager
+ * Unified File Manager for server-backed uploads.
  * 
- * Consolidates all file operations (upload, serve, delete) into a single interface
- * for better maintainability and consistency.
+ * Consolidates upload, serve, and delete operations behind a shared interface so
+ * the editor can remain storage-agnostic.
  */
 
-export interface SupabaseFileUploadOptions {
-  bucket: string
+export interface FileUploadOptions {
   pathPrefix?: string
   maxFileSize?: number
   allowedMimeTypes?: string[]
@@ -30,34 +31,30 @@ export interface FileServeResult {
   error?: string
 }
 
-const DEFAULT_OPTIONS: Required<SupabaseFileUploadOptions> = {
-  bucket: 'ai-transcriber-files',
-  pathPrefix: 'notes',
-  maxFileSize: 10 * 1024 * 1024, // 10MB for documents
-  allowedMimeTypes: [
-    // Images
-    'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-    // Documents
-    'text/plain', 'application/pdf', 
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-    'application/msword', 'application/vnd.ms-excel', 'application/vnd.ms-powerpoint',
-    // Archives
-    'application/zip', 'application/x-rar-compressed', 'application/x-7z-compressed',
-    // Other common types
-    'application/json', 'text/csv', 'text/html', 'text/css'
-  ]
+const DEFAULT_OPTIONS: Required<FileUploadOptions> = {
+  pathPrefix: DEFAULT_UPLOAD_PATH_PREFIX,
+  maxFileSize: FILE_UPLOAD_MAX_BYTES,
+  allowedMimeTypes: ALLOWED_UPLOAD_MIME_TYPES,
 }
 
 /**
- * Uploads a file to Supabase storage
+ * Uploads a file to the local storage API
  */
 export async function uploadFile(
   file: File,
-  options: Partial<SupabaseFileUploadOptions> = {}
+  options: Partial<FileUploadOptions> = {}
 ): Promise<FileUploadResult> {
-  const config = { ...DEFAULT_OPTIONS, ...options }
+  const config: Required<FileUploadOptions> = {
+    pathPrefix: options.pathPrefix ?? DEFAULT_OPTIONS.pathPrefix,
+    maxFileSize:
+      typeof options.maxFileSize === "number" && options.maxFileSize > 0
+        ? options.maxFileSize
+        : DEFAULT_OPTIONS.maxFileSize,
+    allowedMimeTypes:
+      Array.isArray(options.allowedMimeTypes) && options.allowedMimeTypes.length > 0
+        ? options.allowedMimeTypes
+        : DEFAULT_OPTIONS.allowedMimeTypes,
+  }
   
   try {
     // Validate file type
@@ -79,7 +76,7 @@ export async function uploadFile(
     // Use API route for upload
     const formData = new FormData()
     formData.append('file', file)
-    formData.append('pathPrefix', config.pathPrefix || 'notes')
+    formData.append('pathPrefix', config.pathPrefix || DEFAULT_UPLOAD_PATH_PREFIX)
 
     const response = await fetch('/api/files/upload', {
       method: 'POST',
@@ -119,7 +116,7 @@ export async function uploadFile(
 }
 
 /**
- * Deletes a file from Supabase storage
+ * Deletes a file from storage
  */
 export async function deleteFile(filePath: string): Promise<FileDeleteResult> {
   try {
@@ -150,7 +147,7 @@ export async function deleteFile(filePath: string): Promise<FileDeleteResult> {
 }
 
 /**
- * Gets a signed URL for serving a file
+ * Gets a URL for serving a file
  */
 export async function getFileUrl(filePath: string): Promise<FileServeResult> {
   try {
@@ -166,7 +163,7 @@ export async function getFileUrl(filePath: string): Promise<FileServeResult> {
     
     const result = await response.json()
     
-    if (!result.success || !result.url) {
+    if (!result.success || !result.fileUrl) {
       return {
         success: false,
         error: 'Invalid response from serve API'
@@ -175,7 +172,7 @@ export async function getFileUrl(filePath: string): Promise<FileServeResult> {
     
     return {
       success: true,
-      url: result.url
+      url: result.fileUrl
     }
     
   } catch (error) {
@@ -188,7 +185,7 @@ export async function getFileUrl(filePath: string): Promise<FileServeResult> {
 }
 
 /**
- * Deletes multiple files from Supabase storage
+ * Deletes multiple files from storage
  */
 export async function deleteFiles(filePaths: string[]): Promise<void> {
   if (filePaths.length === 0) return
@@ -201,14 +198,11 @@ export async function deleteFiles(filePaths: string[]): Promise<void> {
  * Factory function to create a file uploader with specific options
  */
 export function createFileUploader(
-  options: Partial<SupabaseFileUploadOptions> = {}
+  options: Partial<FileUploadOptions> = {}
 ) {
   return (file: File) => uploadFile(file, options)
 }
 
-// Legacy aliases for backward compatibility
-export const uploadFileToSupabase = uploadFile
-export const deleteFileFromStorage = deleteFile
+// Legacy alias for cleanup helper
 export const cleanupFiles = deleteFiles
 export const cleanupImages = deleteFiles
-export const deleteImageFromStorage = deleteFile

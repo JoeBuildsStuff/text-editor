@@ -6,8 +6,6 @@ export interface TiptapFileUploadConfig {
   maxFileSize?: number
   /** Allowed file MIME types */
   allowedMimeTypes?: string[]
-  /** Supabase bucket name for uploads */
-  supabaseBucket?: string
   /** Custom path prefix for uploads */
   pathPrefix?: string
 }

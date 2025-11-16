@@ -18,6 +18,7 @@ This application provides a full-featured markdown editor where you can:
 
 - **Hybrid approach**: Metadata (IDs, titles, paths, timestamps) is stored in **SQLite database** at `server/documents.db`
 - **Content** is stored in **markdown files** in `server/documents/` directory
+- **Attachments & images** are written to `server/uploads/<userId>/...` through the `/api/files/*` routes so they can be referenced from the editor content
 - Each document has a **UUID-based ID** for stable references, even when filenames change
 - Documents and folders can be organized in **nested folders** using folder paths
 - The database uses ACID transactions for metadata operations
@@ -194,6 +195,13 @@ Stores document content:
 - Markdown files (`.md`) organized by folder structure
 - Content is stored in files matching the `document_path` from the database
 - Files can be edited with external tools and are version-control friendly
+
+### Uploads & Previews (Local-first)
+- All images and attachments are uploaded via `/api/files/*` and written under `server/uploads/{userId}/{pathPrefix}/...` (default `pathPrefix` is `notes`).
+- Editor content stores only the relative path (e.g., `{userId}/notes/base-uuid8.ext`). Components request a scoped internal URL from `/api/files/serve` which returns `/api/files/raw?path=...`.
+- Client-side limits (size/type) come from `src/lib/uploads/config.ts` for fast feedback; the server re-validates and is authoritative. File names are normalized and saved as `${baseName}-${uuid8}${ext}`.
+- Paths are normalized and restricted to the authenticated user by `src/lib/file-storage.ts`. Override the root with `FILE_STORAGE_DIR` when needed.
+- See `docs/README.md` for the full flow, API routes, and extension/component integration details.
 
 ## Upcoming Enhancements
 
