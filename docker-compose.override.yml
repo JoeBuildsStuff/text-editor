@@ -1,0 +1,4 @@
+services:
+  text-editor:
+    image: ghcr.io/joebuildsstuff/text-editor:latest
+    pull_policy: always
