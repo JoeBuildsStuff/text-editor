@@ -134,11 +134,11 @@ jobs:
             # Update docker-compose.yml to use the pulled image
             # Create a temporary override file
             cat > docker-compose.override.yml <<EOF
-            services:
-              text-editor:
-                image: $LATEST_TAG
-                pull_policy: always
-            EOF
+services:
+  text-editor:
+    image: $LATEST_TAG
+    pull_policy: always
+EOF
 
             echo "Recreating text-editor service with latest image"
             "${DOCKER_COMPOSE[@]}" -f docker-compose.yml -f docker-compose.override.yml up -d --force-recreate text-editor
