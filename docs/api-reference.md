@@ -11,7 +11,7 @@ All API endpoints are prefixed with `/api`:
 
 ## Authentication
 
-All API endpoints require authentication except for Better Auth routes. Include the session cookie in requests (handled automatically by browsers) or provide an `Authorization` header.
+All API endpoints require authentication except for Better Auth routes. Include the session cookie in requests (handled automatically by browsers) or provide an `Authorization` header
 
 ### Session Validation
 
