@@ -1,61 +1,86 @@
-# Project Documentation Overview
+# Documentation Index
 
-This directory captures the storage and Tiptap-specific work that makes file uploads behave like first-class citizens inside the markdown editor. Use it as a quick reference for how uploads flow through the system and where to extend things next.
+Welcome to the Text Editor documentation. This directory contains comprehensive documentation to help you understand, develop, and maintain the codebase.
 
-## Highlights
+## 📚 Documentation Overview
 
-- **Local-first uploads** – every image or attachment is saved under `server/uploads/<userId>/...` via `src/lib/file-storage.ts` instead of relying on Supabase.
-- **Dedicated API surface** – `/api/files/{upload,serve,raw,delete}` authenticate every request, validate ownership, and either stream or remove the requested file.
-- **Editor integration** – the Tiptap config only stores file paths. Rendering components call the API routes when they need a temporary URL, keeping editor content small and backend-controlled.
-- **Documentation trail** – findings and open questions about the editor live in `tiptap-file-upload-findings.md`, while this README summarizes the implemented state.
+This is a markdown-based text editor built with Next.js and Tiptap. It provides a rich editing experience with document organization, file uploads, and user authentication.
 
-## Storage Layout
+## 📖 Documentation Structure
 
-| Purpose | Location | Notes |
-| --- | --- | --- |
-| Markdown metadata | `server/documents.db` | Managed by Better SQLite via scripts.
-| Markdown content | `server/documents/` | One `.md` file per document (still editable outside the app).
-| Binary uploads | `server/uploads/<userId>/...` | Created on demand; user ID ensures natural namespacing.
+### Getting Started
+- **[Architecture Overview](./architecture.md)** - High-level system design, technology stack, and architectural decisions
+- **[Project Structure](./project-structure.md)** - Detailed explanation of the codebase organization and directory structure
+- **[Development Guide](./development-guide.md)** - Setup instructions, development workflow, and best practices
 
-The upload helper (`src/lib/file-storage.ts`) sanitizes folder segments, enforces per-user scopes, and infers file extensions where possible. Override the root by exporting `FILE_STORAGE_DIR` in env if you need a different disk location.
+### Core Systems
+- **[Authentication](./authentication.md)** - User authentication system using Better Auth
+- **[Database Schema](./database-schema.md)** - SQLite database structure, tables, and relationships
+- **[File Storage System](./file-storage.md)** - File upload, storage, and management system
+- **[API Reference](./api-reference.md)** - Complete API endpoint documentation
 
-## API Routes
+### Operations
+- **[Deployment Guide](./deployment.md)** - Production deployment process, CI/CD, and optimization strategies
 
-| Route | Method | Responsibility |
-| --- | --- | --- |
-| `/api/files/upload` | `POST` | Accepts multipart form data, validates size/type, and writes to disk.
-| `/api/files/serve` | `GET` | Confirms ownership and returns a short-lived `/api/files/raw?path=...` URL plus metadata.
-| `/api/files/raw` | `GET` | Streams the file bytes with the proper `Content-Type`; auth required, no direct disk access.
-| `/api/files/delete` | `DELETE` | Removes a stored file once the editor deletes its node.
+## 🎯 Quick Links
 
-All four routes call `requireUserSession` to fetch the Better Auth session and reuse `FileStorageError` responses for consistent error codes.
+### For New Developers
+1. Start with [Architecture Overview](./architecture.md) to understand the system
+2. Review [Project Structure](./project-structure.md) to navigate the codebase
+3. Follow [Development Guide](./development-guide.md) to set up your environment
 
-## Editor Hooks
+### For Contributors
+- [Development Guide](./development-guide.md) - Development workflow and conventions
+- [API Reference](./api-reference.md) - API endpoints and usage
+- [Database Schema](./database-schema.md) - Database structure and migrations
 
-- `src/components/tiptap/file-storage-manager.ts` – single client entry point for upload/delete/serve helpers.
-- `src/components/tiptap/file-handler.tsx` – intercepts paste/drop events and calls the upload helper.
-- `src/components/tiptap/custom-image-view.tsx`, `file-node-view.tsx`, `file-document-preview.tsx` – fetch `/api/files/serve` on mount to hydrate the node with an access URL.
+### For DevOps
+- [Deployment Guide](./deployment.md) - Production deployment and CI/CD
+- [File Storage System](./file-storage.md) - Storage configuration and management
 
-Deleting any Tiptap node with a local `src` automatically calls the delete API, so unused files do not linger.
+## 🔑 Key Concepts
 
-## Nuances & Responsibilities
+### Hybrid Storage Model
+The application uses a hybrid storage approach:
+- **SQLite Database** (`server/documents.db`) - Stores document metadata (IDs, titles, paths, timestamps)
+- **File System** (`server/documents/`) - Stores markdown content as `.md` files
+- **User Uploads** (`server/uploads/<userId>/`) - Stores images and attachments per user
 
-- Client vs Server validation:
-  - The editor uses client-side limits from `src/lib/uploads/config.ts` for fast feedback; the server re-validates every request using the same limits. The server is authoritative.
-- Path vs URL:
-  - Editor content stores only relative file paths like `{userId}/notes/base-uuid8.ext`. Components resolve a scoped internal URL via `/api/files/serve`, which points to `/api/files/raw?path=...`. Raw URLs are not persisted.
-- Naming & layout:
-  - Files are written as `${baseName}-${uuid8}${ext}` under `{userId}/{pathPrefix}/...`. The default `pathPrefix` is `notes`; override per upload via the API/form-data argument.
-- Security & scoping:
-  - `src/lib/file-storage.ts` normalizes paths and enforces that the first segment matches the authenticated user’s ID, preventing traversal and cross-user access.
-- MIME types & extensions:
-  - Allowed types are centralized in `src/lib/uploads/config.ts`. The server maps common MIME types to extensions and infers an extension when the upload lacks one.
-- Storage root:
-  - Set `FILE_STORAGE_DIR` to relocate the on-disk root. Relative values are resolved from the project root.
+### Authentication
+- Uses [Better Auth](https://www.better-auth.com/) for authentication
+- Email/password authentication
+- Session-based auth with SQLite storage
+- All API routes require authentication
 
-## Additional Reading
+### Editor System
+- Built with [Tiptap](https://tiptap.dev/) - a headless rich text editor
+- Markdown-based content storage
+- Supports images, files, tables, code blocks, and more
+- Local-first file uploads (no external storage required)
 
-- `server/README.md` – migration practices for the SQLite databases plus reminders about `server/uploads`.
-- `README.md` – high-level overview of how metadata and content interact in the hybrid storage model.
+## 📁 Related Documentation
 
-Keeping these docs up to date will make it easier to revisit Supabase or another object store later if requirements change.
+- **Root README.md** - Project overview and quick start
+- **server/README.md** - Database migration best practices
+- **src/components/tiptap/README.md** - Tiptap-specific implementation details
+
+## 🤝 Contributing
+
+When adding new features or making changes:
+1. Update relevant documentation files
+2. Keep the architecture diagram current
+3. Document API changes in [API Reference](./api-reference.md)
+4. Update [Database Schema](./database-schema.md) for schema changes
+5. Add migration notes in `server/README.md` for database changes
+
+## 📝 Documentation Maintenance
+
+This documentation should be kept up-to-date with the codebase. When making significant changes:
+- Update the relevant documentation file
+- Update this index if adding new documentation
+- Ensure code examples are current and tested
+- Keep architecture diagrams and flow charts accurate
+
+---
+
+**Last Updated**: Documentation is maintained alongside the codebase. Check git history for recent changes.

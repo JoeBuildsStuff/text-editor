@@ -7,7 +7,9 @@ env:
   APP_DIR: /home/joe/apps/text-editor
   SERVICE_NAME: text-editor
   # GitHub Container Registry image
-  IMAGE_NAME: ghcr.io/${{ github.repository }}/text-editor
+  # github.repository is "owner/repo" - Docker requires lowercase
+  # We'll use github.repository directly and docker/metadata-action will handle case
+  IMAGE_NAME: ghcr.io/${{ github.repository }}
 
 jobs:
   # Build Docker image in CI (fast, uses CI resources)
@@ -33,11 +35,18 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set lowercase image name
+        id: image
+        run: |
+          IMAGE_LOWER=$(echo "${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
+          echo "image=$IMAGE_LOWER" >> $GITHUB_OUTPUT
+          echo "Image name: $IMAGE_LOWER"
+
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.IMAGE_NAME }}
+          images: ${{ steps.image.outputs.image }}
           tags: |
             type=ref,event=branch
             type=sha,prefix={{branch}}-
@@ -81,7 +90,8 @@ jobs:
             set -euo pipefail
             APP_DIR="${APP_DIR:-/home/joe/apps/text-editor}"
             SERVICE_NAME="${SERVICE_NAME:-text-editor}"
-            IMAGE_NAME="${IMAGE_NAME:-ghcr.io/${{ github.repository }}/text-editor}"
+            # Convert IMAGE_NAME to lowercase (Docker requires lowercase)
+            IMAGE_NAME=$(echo "${IMAGE_NAME:-ghcr.io/${{ github.repository }}}" | tr '[:upper:]' '[:lower:]')
             LATEST_TAG="${IMAGE_NAME}:latest"
             
             cd "$APP_DIR"
