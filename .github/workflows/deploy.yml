@@ -41,76 +41,16 @@ jobs:
             echo "Deployed commit: $(git rev-parse HEAD)"
             echo "Commit message: $(git log -1 --pretty=%B)"
 
-            # Install and build
-            # corepack enable skipped to avoid EACCES on symlink in /usr/bin
-            if ! command -v pnpm >/dev/null 2>&1; then
-              echo "pnpm not found on server; please install pnpm" >&2
+            # Rebuild and restart Docker Compose (keeps Traefik-routed container in sync)
+            if ! command -v docker >/dev/null 2>&1; then
+              echo "Docker not found on server; cannot rebuild container" >&2
               exit 1
             fi
-            
-            # Clean + rebuild the correct way
-            echo "Cleaning node_modules, .pnpm, and .next directories"
-            rm -rf node_modules .pnpm .next .next.lock 2>/dev/null || true
 
-            # Install deps
-            echo "Installing dependencies"
-            pnpm install --frozen-lockfile
-            
-            # Manually build better-sqlite3 native bindings
-            # pnpm v10 may block scripts even with onlyBuiltDependencies, so we build manually
-            echo "Building better-sqlite3 native bindings"
-            BETTER_SQLITE3_DIR=$(find node_modules/.pnpm -type d -path "*/better-sqlite3@*/node_modules/better-sqlite3" 2>/dev/null | head -n 1)
-            if [ -n "$BETTER_SQLITE3_DIR" ] && [ -d "$BETTER_SQLITE3_DIR" ]; then
-              echo "Found better-sqlite3 at: $BETTER_SQLITE3_DIR"
-              cd "$BETTER_SQLITE3_DIR"
-              # Run the install script to build native bindings
-              # Using npm run install will execute the install script without reinstalling deps
-              if command -v npm >/dev/null 2>&1; then
-                echo "Running npm install script to build native bindings..."
-                npm run install 2>&1 || npm install --ignore-scripts=false 2>&1 || true
-              elif command -v node-gyp >/dev/null 2>&1; then
-                echo "Building with node-gyp..."
-                node-gyp rebuild
-              else
-                # Try using pnpm exec to run node-gyp
-                echo "Building with pnpm exec node-gyp..."
-                pnpm exec node-gyp rebuild || true
-              fi
-              cd "$APP_DIR"
-            else
-              echo "Warning: better-sqlite3 directory not found, trying pnpm rebuild" >&2
-              pnpm rebuild better-sqlite3 2>&1 || true
-            fi
+            echo "Building and restarting docker compose stack"
+            docker compose pull text-editor || true
+            docker compose build --pull text-editor
+            docker compose up -d --remove-orphans text-editor
 
-            # Verify the binding exists
-            BINDING_PATH=$(find node_modules/.pnpm/better-sqlite3@*/node_modules/better-sqlite3/build/Release -name "better_sqlite3.node" 2>/dev/null | head -n 1)
-            if [ -n "$BINDING_PATH" ] && [ -f "$BINDING_PATH" ]; then
-              echo "✓ Verified better-sqlite3 native binding exists at: $BINDING_PATH"
-            else
-              echo "✗ Warning: better-sqlite3 native binding not found at expected location" >&2
-              echo "  Searched in: node_modules/.pnpm/better-sqlite3@*/node_modules/better-sqlite3/build/Release/" >&2
-              # Don't exit here, let the build attempt continue - it will fail with a clearer error if needed
-            fi
-
-            # Build the application
-            # VPS has limited RAM (2GB), so we skip type checking to save memory
-            # Type checking is a dev-time concern; runtime doesn't need it
-            # Set reasonable memory limit (1.5GB max) for the 2GB VPS
-            echo "Building application (skipping type check on memory-constrained VPS)"
-            export NODE_OPTIONS="--max-old-space-size=1536"
-            export SKIP_TYPE_CHECK=true
-            pnpm build
-            # Restart service (try system service, then user service)
-            if command -v systemctl >/dev/null 2>&1; then
-              if sudo -n systemctl status "$SERVICE_NAME" >/dev/null 2>&1; then
-                echo "Restarting system service $SERVICE_NAME"
-                sudo -n systemctl restart "$SERVICE_NAME"
-              elif systemctl --user status "$SERVICE_NAME" >/dev/null 2>&1; then
-                echo "Restarting user service $SERVICE_NAME"
-                systemctl --user restart "$SERVICE_NAME"
-              else
-                echo "Warning: service $SERVICE_NAME not found. Skipping restart." >&2
-              fi
-            else
-              echo "systemctl not found; skipping restart" >&2
-            fi
+            echo "Pruning dangling images"
+            docker image prune -f
