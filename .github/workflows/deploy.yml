@@ -6,143 +6,100 @@ on:
 env:
   APP_DIR: /home/joe/apps/text-editor
   SERVICE_NAME: text-editor
-  # GitHub Container Registry image
-  # github.repository is "owner/repo" - Docker requires lowercase
-  # We'll use github.repository directly and docker/metadata-action will handle case
-  IMAGE_NAME: ghcr.io/${{ github.repository }}
 
 jobs:
-  # Build Docker image in CI (fast, uses CI resources)
-  build:
+  deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    outputs:
-      image-tag: ${{ steps.meta.outputs.tags }}
-      image-digest: ${{ steps.build.outputs.digest }}
     steps:
-      - name: Checkout code
+      - name: Checkout (metadata only)
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set lowercase image name
-        id: image
-        run: |
-          IMAGE_LOWER=$(echo "${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
-          echo "image=$IMAGE_LOWER" >> $GITHUB_OUTPUT
-          echo "Image name: $IMAGE_LOWER"
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ steps.image.outputs.image }}
-          tags: |
-            type=ref,event=branch
-            type=sha,prefix={{branch}}-
-            type=raw,value=latest,enable={{is_default_branch}}
-
-      - name: Build and push Docker image
-        id: build
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          # Build args if needed
-          build-args: |
-            SKIP_TYPE_CHECK=true
-
-      - name: Image digest
-        run: echo "Image pushed with digest ${{ steps.build.outputs.digest }}"
-
-  # Deploy to VPS (just pulls image and restarts - no building!)
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.0.3
-        env:
-          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          envs: APP_DIR,SERVICE_NAME,IMAGE_NAME,GHCR_TOKEN,GITHUB_TOKEN
+          envs: APP_DIR,SERVICE_NAME
           script_stop: true
           script: |
             set -euo pipefail
             APP_DIR="${APP_DIR:-/home/joe/apps/text-editor}"
             SERVICE_NAME="${SERVICE_NAME:-text-editor}"
-            # Convert IMAGE_NAME to lowercase (Docker requires lowercase)
-            IMAGE_NAME=$(echo "${IMAGE_NAME:-ghcr.io/${{ github.repository }}}" | tr '[:upper:]' '[:lower:]')
-            LATEST_TAG="${IMAGE_NAME}:latest"
-            
             cd "$APP_DIR"
 
-            # Log in to GitHub Container Registry
-            # For private repos, set secrets.GHCR_TOKEN (Personal Access Token with read:packages permission)
-            # Falls back to GITHUB_TOKEN if GHCR_TOKEN not set
-            if [ -n "${GHCR_TOKEN:-}" ]; then
-              echo "Logging in to GitHub Container Registry with GHCR_TOKEN..."
-              echo "$GHCR_TOKEN" | docker login ghcr.io -u ${{ github.actor }} --password-stdin || {
-                echo "Warning: Login failed with GHCR_TOKEN, trying GITHUB_TOKEN..." >&2
-                if [ -n "${GITHUB_TOKEN:-}" ]; then
-                  echo "$GITHUB_TOKEN" | docker login ghcr.io -u ${{ github.actor }} --password-stdin || true
-                fi
-              }
-            elif [ -n "${GITHUB_TOKEN:-}" ]; then
-              echo "Logging in to GitHub Container Registry with GITHUB_TOKEN..."
-              echo "$GITHUB_TOKEN" | docker login ghcr.io -u ${{ github.actor }} --password-stdin || true
-            else
-              echo "Warning: No token set. Trying anonymous pull (only works for public packages)..." >&2
-            fi
-
-            # Pull the latest image (built in CI)
-            echo "Pulling latest image: $LATEST_TAG"
-            docker pull "$LATEST_TAG" || {
-              echo "Error: Failed to pull image $LATEST_TAG" >&2
-              exit 1
-            }
-
-            # Determine docker compose command (new vs legacy)
-            if docker compose version >/dev/null 2>&1; then
-              DOCKER_COMPOSE=(docker compose)
-            elif command -v docker-compose >/dev/null 2>&1; then
-              DOCKER_COMPOSE=(docker-compose)
-            else
-              echo "docker compose/compose plugin not found" >&2
+            # Ensure repo is up to date
+            if [ ! -d .git ]; then
+              echo "Error: $APP_DIR is not a git repo" >&2
               exit 1
             fi
+            # Fetch latest changes and reset to main branch
+            # Use FETCH_HEAD to avoid ambiguous refname issues
+            git fetch origin main
+            git checkout -B main FETCH_HEAD
+            git reset --hard FETCH_HEAD
+            echo "Deployed commit: $(git rev-parse HEAD)"
+            echo "Commit message: $(git log -1 --pretty=%B)"
 
-            # Update docker-compose.yml to use the pulled image
-            # Create a temporary override file
-            # Use printf to avoid heredoc indentation issues over SSH
-            # Remove pull_policy for compatibility with older compose versions
-            printf 'services:\n  text-editor:\n    image: %s\n' "$LATEST_TAG" > docker-compose.override.yml
+            # Install and build
+            # corepack enable skipped to avoid EACCES on symlink in /usr/bin
+            if ! command -v pnpm >/dev/null 2>&1; then
+              echo "pnpm not found on server; please install pnpm" >&2
+              exit 1
+            fi
+            
+            # Clean + rebuild the correct way
+            echo "Cleaning node_modules, .pnpm, and .next directories"
+            rm -rf node_modules .pnpm .next .next.lock 2>/dev/null || true
 
-            echo "Recreating text-editor service with latest image"
-            "${DOCKER_COMPOSE[@]}" -f docker-compose.yml -f docker-compose.override.yml up -d --force-recreate text-editor
+            # Install deps
+            echo "Installing dependencies"
+            pnpm install --frozen-lockfile
+            
+            # Manually build better-sqlite3 native bindings
+            # pnpm v10 may block scripts even with onlyBuiltDependencies, so we build manually
+            echo "Building better-sqlite3 native bindings"
+            BETTER_SQLITE3_DIR=$(find node_modules/.pnpm -type d -path "*/better-sqlite3@*/node_modules/better-sqlite3" 2>/dev/null | head -n 1)
+            if [ -n "$BETTER_SQLITE3_DIR" ] && [ -d "$BETTER_SQLITE3_DIR" ]; then
+              echo "Found better-sqlite3 at: $BETTER_SQLITE3_DIR"
+              cd "$BETTER_SQLITE3_DIR"
+              # Run the install script to build native bindings
+              # Using npm run install will execute the install script without reinstalling deps
+              if command -v npm >/dev/null 2>&1; then
+                echo "Running npm install script to build native bindings..."
+                npm run install 2>&1 || npm install --ignore-scripts=false 2>&1 || true
+              elif command -v node-gyp >/dev/null 2>&1; then
+                echo "Building with node-gyp..."
+                node-gyp rebuild
+              else
+                # Try using pnpm exec to run node-gyp
+                echo "Building with pnpm exec node-gyp..."
+                pnpm exec node-gyp rebuild || true
+              fi
+              cd "$APP_DIR"
+            else
+              echo "Warning: better-sqlite3 directory not found, trying pnpm rebuild" >&2
+              pnpm rebuild better-sqlite3 2>&1 || true
+            fi
 
-            # Clean up override file
-            rm -f docker-compose.override.yml
+            # Verify the binding exists
+            BINDING_PATH=$(find node_modules/.pnpm/better-sqlite3@*/node_modules/better-sqlite3/build/Release -name "better_sqlite3.node" 2>/dev/null | head -n 1)
+            if [ -n "$BINDING_PATH" ] && [ -f "$BINDING_PATH" ]; then
+              echo "✓ Verified better-sqlite3 native binding exists at: $BINDING_PATH"
+            else
+              echo "✗ Warning: better-sqlite3 native binding not found at expected location" >&2
+              echo "  Searched in: node_modules/.pnpm/better-sqlite3@*/node_modules/better-sqlite3/build/Release/" >&2
+              # Don't exit here, let the build attempt continue - it will fail with a clearer error if needed
+            fi
 
+            # Build the application
+            # VPS has limited RAM (2GB), so we skip type checking to save memory
+            # Type checking is a dev-time concern; runtime doesn't need it
+            # Set reasonable memory limit (1.5GB max) for the 2GB VPS
+            echo "Building application (skipping type check on memory-constrained VPS)"
+            export NODE_OPTIONS="--max-old-space-size=1536"
+            export SKIP_TYPE_CHECK=true
+            pnpm build
             # Restart service (try system service, then user service)
             if command -v systemctl >/dev/null 2>&1; then
               if sudo -n systemctl status "$SERVICE_NAME" >/dev/null 2>&1; then
@@ -157,5 +114,3 @@ jobs:
             else
               echo "systemctl not found; skipping restart" >&2
             fi
-
-            echo "✓ Deployment complete! Image: $LATEST_TAG"
