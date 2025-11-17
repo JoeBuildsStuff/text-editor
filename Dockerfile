@@ -3,6 +3,10 @@
 # Stage 1: Builder - Install dependencies and build the app
 FROM node:20.19.5-slim AS builder
 
+# Accept build argument for NEXT_PUBLIC_BETTER_AUTH_URL
+ARG NEXT_PUBLIC_BETTER_AUTH_URL
+ENV NEXT_PUBLIC_BETTER_AUTH_URL=${NEXT_PUBLIC_BETTER_AUTH_URL}
+
 # Install pnpm 9 and build dependencies for better-sqlite3
 RUN corepack enable && corepack prepare pnpm@9 --activate
 

@@ -3,6 +3,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_BETTER_AUTH_URL=${BETTER_AUTH_URL:-https://text-editor.joe-taylor.me}
     container_name: text-editor
     restart: always
     # Port mapping not needed - Traefik routes via Docker network
