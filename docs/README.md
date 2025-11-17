@@ -1,6 +1,6 @@
 # Documentation Index
 
-Welcome to the Text Editor documentation. This directory contains comprehensive documentation to help you understand, develop, and maintain the codebase.
+This directory contains comprehensive documentation to help you understand, develop, and maintain the codebase.
 
 ## 📚 Documentation Overview
 
