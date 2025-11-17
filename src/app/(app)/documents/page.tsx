@@ -24,16 +24,6 @@ export default async function DocumentsPage() {
 
   return (
     <div className="mx-auto flex h-full w-full max-w-6xl flex-col gap-6 py-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Documents</h1>
-          <p className="text-muted-foreground mt-1">
-            {documents.length} {documents.length === 1 ? "document" : "documents"}
-            {folders.length > 0 && ` • ${folders.length} ${folders.length === 1 ? "folder" : "folders"}`}
-          </p>
-        </div>
-      </div>
-
       {documents.length > 0 && (
         <div>
           <h2 className="text-lg font-semibold mb-4">All Documents</h2>
