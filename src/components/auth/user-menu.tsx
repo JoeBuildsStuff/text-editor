@@ -6,7 +6,6 @@ import {
   ChevronsUpDown,
   LogOut,
   Moon,
-  Settings,
   Sun,
   User,
 } from "lucide-react";

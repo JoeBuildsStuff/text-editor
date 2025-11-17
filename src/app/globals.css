@@ -1,6 +1,8 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
+@import "./styles/highlight-github.css";
+@import "./styles/highlight-github-dark.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -119,5 +121,19 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+@layer base {
+  /* Keep code block background aligned with app surfaces */
+  .code-block pre,
+  .code-block pre code.hljs,
+  .code-block code.hljs {
+    background: var(--card);
+  }
+  .dark .code-block pre,
+  .dark .code-block pre code.hljs,
+  .dark .code-block code.hljs {
+    background: var(--card);
   }
 }

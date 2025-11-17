@@ -41,12 +41,19 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# database
-server/documents.db
-server/documents.db-*
-server/auth.sqlite
-server/auth.sqlite-*
+# server local files (databases, storage, test data)
+# Database files
+server/*.db
+server/*.db-*
+server/*.sqlite
+server/*.sqlite-*
 
-# user documents (keep .gitkeep to maintain directory structure)
+# User documents and content (keep .gitkeep to maintain directory structure)
 server/documents/**
 !server/documents/.gitkeep
+
+# User uploads (images, attachments, etc.)
+server/uploads/**
+
+# Keep server README.md (documentation)
+!server/README.md

@@ -73,6 +73,9 @@ const Tiptap = ({
         }),
         CustomCodeBlock.configure({
             lowlight,
+            HTMLAttributes: {
+              class: 'hljs',
+            }
         }),
         Link.configure({
             openOnClick: false,

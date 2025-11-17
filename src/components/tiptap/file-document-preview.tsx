@@ -80,7 +80,7 @@ export const DocumentPreview = ({ filePath, filename, fileType, fileSize, onDown
           setTextContent(text)
         } else if (fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
           // Handle .docx files
-          // @ts-ignore - docx-preview package removed, this will fail gracefully at runtime
+          // @ts-expect-error docx-preview has no types and may be absent at runtime; we handle failures gracefully
           const { renderAsync } = await import('docx-preview')
           
           // Clear container

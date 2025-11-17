@@ -44,9 +44,9 @@ export function CodeBlock(props: NodeViewProps) {
         variant="ghost"
       />
       <Separator className='absolute top-13 left-0 right-0' />
-      <pre>
-        <NodeViewContent />
+      <pre className="pt-13">
+        <NodeViewContent as="code" className="hljs"/>
       </pre>
     </NodeViewWrapper>
   )
-} 
+}
