@@ -1,1 +1,7 @@
 @import "highlight.js/styles/github.css";
+
+.hljs,
+pre code.hljs,
+code.hljs {
+  background: transparent;
+}

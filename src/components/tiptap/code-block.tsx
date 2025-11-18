@@ -20,7 +20,7 @@ export function CodeBlock(props: NodeViewProps) {
   }
 
   return (
-    <NodeViewWrapper className="code-block group relative">
+    <NodeViewWrapper className="bg-background code-block group relative rounded-md border border-border mb-4">
       <Select
         defaultValue={props.node.attrs.language || 'plaintext'}
         onValueChange={handleLanguageChange}
@@ -43,9 +43,9 @@ export function CodeBlock(props: NodeViewProps) {
         className="absolute right-2 top-3.5 size-6"
         variant="ghost"
       />
-      <Separator className='absolute top-13 left-0 right-0' />
-      <pre className="pt-13">
-        <NodeViewContent as="code" className="hljs"/>
+      <Separator className='absolute top-[3.12rem] left-0 right-0' />
+      <pre className="pt-9 pb-4 mb-0 bg-background">
+        <NodeViewContent className="hljs"/>
       </pre>
     </NodeViewWrapper>
   )
