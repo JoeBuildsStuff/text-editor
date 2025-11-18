@@ -172,20 +172,34 @@ See [API Reference](./api-reference.md) for complete endpoint documentation.
 
 ### Allowed File Types
 
-Defined in `src/lib/uploads/config.ts`:
+Defined in `src/lib/uploads/config.ts`. The complete list of allowed MIME types:
 
 **Images**:
-- `image/jpeg`, `image/png`, `image/gif`, `image/webp`
+- `image/jpeg`
+- `image/png`
+- `image/gif`
+- `image/webp`
 
 **Documents**:
-- `text/plain`, `application/pdf`
-- Microsoft Office: `.docx`, `.xlsx`, `.pptx`, `.doc`, `.xls`, `.ppt`
+- `text/plain`
+- `application/pdf`
+- `application/vnd.openxmlformats-officedocument.wordprocessingml.document` (`.docx`)
+- `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` (`.xlsx`)
+- `application/vnd.openxmlformats-officedocument.presentationml.presentation` (`.pptx`)
+- `application/msword` (`.doc`)
+- `application/vnd.ms-excel` (`.xls`)
+- `application/vnd.ms-powerpoint` (`.ppt`)
 
 **Archives**:
-- `application/zip`, `application/x-rar-compressed`, `application/x-7z-compressed`
+- `application/zip`
+- `application/x-rar-compressed`
+- `application/x-7z-compressed`
 
 **Other**:
-- `application/json`, `text/csv`, `text/html`, `text/css`
+- `application/json`
+- `text/csv`
+- `text/html`
+- `text/css`
 
 ### Size Limits
 

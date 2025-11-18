@@ -231,6 +231,8 @@ The `scripts/setup-databases.ts` script:
 2. Applies schema from `sql/documents-schema.sql`
 3. Seeds data from `sql/documents-seed.sql` (if database is empty)
 
+**Custom Database Path**: You can specify a custom path for the documents database using the `DOCUMENTS_SQLITE_PATH` environment variable. The default is `server/documents.db` relative to the project root.
+
 ### Commands
 
 ```bash

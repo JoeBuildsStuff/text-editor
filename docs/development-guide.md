@@ -47,6 +47,14 @@ NEXT_PUBLIC_BETTER_AUTH_URL=http://localhost:3000
 
 # Optional: Custom file storage directory
 FILE_STORAGE_DIR=./server/uploads
+
+# Optional: Custom database paths
+DOCUMENTS_SQLITE_PATH=./server/documents.db
+AUTH_SQLITE_PATH=./server/auth.sqlite
+
+# Optional: Server configuration
+PORT=3000
+NEXT_TELEMETRY_DISABLED=1
 ```
 
 **Generate Auth Secret**:
@@ -92,6 +100,11 @@ The application will be available at [http://localhost:3000](http://localhost:30
 2. Click "New Document" in the sidebar
 3. Start editing in the Tiptap editor
 4. Document is automatically saved to the database and file system
+
+### User-Facing Features
+
+- **Help Page** (`/help`): User-facing documentation with instructions for creating documents, organizing folders, and using the editor features
+- **Profile Page** (`/profile`): User profile management and settings
 
 ### Making Code Changes
 
@@ -266,6 +279,8 @@ pnpm build
 pnpm start
 ```
 
+**Note**: The build process uses the `--webpack` flag to ensure proper handling of native modules like `better-sqlite3`. The webpack configuration externalizes `better-sqlite3` on the server-side to avoid bundling issues.
+
 ## Code Style & Conventions
 
 ### TypeScript
@@ -332,6 +347,7 @@ If you see "database is locked" errors:
 2. **TypeScript errors**:
    - Run `pnpm build` to see all errors
    - Fix type issues incrementally
+   - For memory-constrained environments, set `SKIP_TYPE_CHECK=true` to skip type checking during build
 
 3. **Import errors**:
    - Check `tsconfig.json` path aliases

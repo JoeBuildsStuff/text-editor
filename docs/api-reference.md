@@ -444,6 +444,18 @@ Delete a file from storage.
 
 ### Authentication
 
+#### Better Auth Routes (`/api/auth/[...all]`)
+
+The application uses Better Auth for authentication, which provides a catch-all route at `/api/auth/[...all]` that handles all authentication operations. This route is managed by Better Auth and includes:
+
+- User registration (`POST /api/auth/sign-up`)
+- User authentication (`POST /api/auth/sign-in`)
+- Session management (`GET /api/auth/session`)
+- Sign out (`POST /api/auth/sign-out`)
+- Additional Better Auth endpoints as configured
+
+**Note**: For complete Better Auth API documentation, refer to the [Better Auth Documentation](https://www.better-auth.com/docs). The examples below show the basic authentication endpoints.
+
 #### `POST /api/auth/sign-up`
 
 Register a new user account.

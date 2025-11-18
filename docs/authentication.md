@@ -51,6 +51,13 @@ BETTER_AUTH_URL=http://localhost:3000
 NEXT_PUBLIC_BETTER_AUTH_URL=http://localhost:3000
 ```
 
+Optional environment variables:
+
+```env
+# Custom auth database path (default: server/auth.sqlite)
+AUTH_SQLITE_PATH=/path/to/auth.sqlite
+```
+
 **Generate Secret**:
 ```bash
 pnpm auth:secret
@@ -116,6 +123,20 @@ Better Auth supports additional methods that can be enabled:
 - Magic links
 - Two-factor authentication
 - Social login
+
+## API Routes
+
+### Better Auth Endpoints
+
+The application exposes Better Auth API routes at `/api/auth/[...all]`. This catch-all route handles all authentication operations:
+
+- `POST /api/auth/sign-up` - User registration
+- `POST /api/auth/sign-in` - User authentication
+- `POST /api/auth/sign-out` - Session termination
+- `GET /api/auth/session` - Get current session
+- Additional Better Auth endpoints as configured
+
+**Note**: These routes are handled automatically by Better Auth. For complete API documentation, refer to the [Better Auth Documentation](https://www.better-auth.com/docs).
 
 ## API Integration
 

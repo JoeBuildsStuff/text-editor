@@ -10,7 +10,7 @@ The Text Editor is a full-stack web application that provides a markdown-based t
 
 ### Frontend
 - **Next.js 16** - React framework with App Router
-- **React 19** - UI library
+- **React 19** - UI library with React Compiler enabled
 - **TypeScript** - Type safety
 - **Tiptap 3** - Rich text editor framework
 - **Tailwind CSS 4** - Styling
@@ -146,6 +146,20 @@ Next.js App Router with SSR:
 - SEO-friendly (if needed)
 - Server-side authentication checks
 - API routes co-located with pages
+
+### 6. React Compiler
+
+The application uses React Compiler (enabled in `next.config.ts`) for automatic optimization:
+- Compile-time optimizations
+- Reduced re-renders
+- Better performance without manual memoization
+
+### 7. Native Module Handling
+
+The build process uses custom webpack configuration to handle native modules:
+- `better-sqlite3` is externalized on the server-side
+- Prevents bundling issues with native SQLite bindings
+- Configured via `serverExternalPackages` in Next.js config
 
 ## Data Flow
 

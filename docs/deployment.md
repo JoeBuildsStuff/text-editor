@@ -71,12 +71,18 @@ NODE_ENV=production
 NEXT_PUBLIC_BETTER_AUTH_URL=https://your-domain.com
 BETTER_AUTH_URL=https://your-domain.com
 BETTER_AUTH_SECRET=<generate-secure-secret>
+PORT=3000
+NEXT_TELEMETRY_DISABLED=1
 
 # File Storage (optional)
 FILE_STORAGE_DIR=/app/server/uploads
 
 # Database Paths (optional)
+DOCUMENTS_SQLITE_PATH=/app/server/documents.db
 AUTH_SQLITE_PATH=/app/server/auth.sqlite
+
+# Build Configuration (optional)
+SKIP_TYPE_CHECK=false  # Set to 'true' for memory-constrained builds
 ```
 
 **Generate Auth Secret**:
@@ -273,9 +279,42 @@ docker-compose logs -f
 docker-compose ps
 ```
 
-## Reverse Proxy (Nginx)
+## Reverse Proxy
 
-### Nginx Configuration
+The application can be deployed behind a reverse proxy. Two common options are Traefik (recommended for Docker deployments) and Nginx.
+
+### Traefik (Recommended for Docker)
+
+If using Docker with Traefik, configure the service with Traefik labels in `docker-compose.yml`:
+
+```yaml
+services:
+  text-editor:
+    # ... other configuration
+    networks:
+      - traefik_proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik_proxy"
+      - "traefik.http.routers.text-editor.rule=Host(`your-domain.com`)"
+      - "traefik.http.routers.text-editor.entrypoints=web"
+      - "traefik.http.routers.text-editor-secure.rule=Host(`your-domain.com`)"
+      - "traefik.http.routers.text-editor-secure.entrypoints=websecure"
+      - "traefik.http.routers.text-editor-secure.tls=true"
+      - "traefik.http.routers.text-editor-secure.tls.certresolver=letsencrypt"
+      - "traefik.http.services.text-editor.loadbalancer.server.port=3000"
+
+networks:
+  traefik_proxy:
+    external: true
+```
+
+**Requirements**:
+- Traefik must be running and accessible
+- External network `traefik_proxy` must exist
+- Traefik must be configured with Let's Encrypt certificate resolver
+
+### Nginx (Alternative)
 
 Set up Nginx as a reverse proxy:
 
@@ -299,6 +338,12 @@ server {
 ```
 
 ### SSL/TLS Setup
+
+#### With Traefik
+
+Traefik automatically handles SSL certificates via Let's Encrypt when configured with a certificate resolver. No manual setup required.
+
+#### With Nginx
 
 Use Let's Encrypt for free SSL:
 
@@ -373,7 +418,9 @@ export async function GET() {
 
 - **Application logs**: `docker-compose logs -f app`
 - **System logs**: `journalctl -u docker`
-- **Nginx logs**: `/var/log/nginx/access.log` and `error.log`
+- **Reverse proxy logs**:
+  - **Traefik**: Check Traefik dashboard or logs (`docker logs traefik`)
+  - **Nginx** (if using): `/var/log/nginx/access.log` and `error.log`
 
 ### Resource Monitoring
 
