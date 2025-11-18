@@ -39,6 +39,8 @@ import { CodeBlock } from '@/components/tiptap/code-block'
 import FixedMenu from '@/components/tiptap/fixed-menu'
 import BubbleMenuComponent from '@/components/tiptap/bubble-menu'
 import { createFileHandlerConfig } from '@/components/tiptap/file-handler'
+import { authClient } from '@/lib/auth-client'
+import { getMarkdownWithFileNodes, restoreFileNodes } from '@/components/tiptap/file-node-serialization'
 
 const lowlight = createLowlight(common)
 const CustomCodeBlock = CodeBlockLowlight.extend({
@@ -59,6 +61,8 @@ const Tiptap = ({
 }: TiptapProps) => {
   // Track the currently selected node for drag handle functionality
   const [, setSelectedNode] = useState<{ type: { name: string } } | null>(null)
+  const sessionState = authClient.useSession()
+  const userId = sessionState.data?.user?.id
 
   const editor = useEditor({
     extensions: [
@@ -131,8 +135,8 @@ const Tiptap = ({
     onUpdate: ({ editor }) => {
       if (onChange) {
         try {
-          // Return markdown if available, otherwise fall back to HTML
-          const markdown = editor.getMarkdown()
+          // Return markdown (with file nodes preserved) if available, otherwise fall back to HTML
+          const markdown = getMarkdownWithFileNodes(editor, userId)
           onChange(markdown)
         } catch {
           // Fallback to HTML if markdown conversion fails
@@ -153,11 +157,12 @@ const Tiptap = ({
     }
   })
 
+  // Convert placeholder file links (stored in markdown) back into file nodes so they render
   useEffect(() => {
     if (editor) {
       try {
-        // Try to get markdown content for comparison
-        const editorMarkdown = editor.getMarkdown()
+        // Try to get markdown content for comparison (with file nodes preserved)
+        const editorMarkdown = getMarkdownWithFileNodes(editor, userId)
         // Compare the content and update only if it's different.
         // This prevents an infinite loop.
         if (content !== editorMarkdown) {
@@ -165,16 +170,22 @@ const Tiptap = ({
             contentType: 'markdown',
             emitUpdate: false 
           })
+          restoreFileNodes(editor, userId)
         }
       } catch {
         // Fallback to HTML comparison if markdown is not available
         const editorContent = editor.getHTML()
         if (content !== editorContent) {
           editor.commands.setContent((content as string) || '', { emitUpdate: false })
+          restoreFileNodes(editor, userId)
         }
       }
     }
-  }, [content, editor])
+  }, [content, editor, userId])
+
+  useEffect(() => {
+    restoreFileNodes(editor, userId)
+  }, [editor, userId])
 
   // Skeleton
   if (!editor) {

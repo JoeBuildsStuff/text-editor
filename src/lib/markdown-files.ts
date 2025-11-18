@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto"
 import { mkdir, readFile, writeFile, rename, rm } from "node:fs/promises"
 import path from "node:path"
 import { getDatabase } from "./db"
+import { deleteStoredFile, FileStorageError } from "./file-storage"
+import { sanitizeUserSegment } from "./user-paths"
 
 export const MARKDOWN_DIR = path.join(process.cwd(), "server", "documents")
 const MARKDOWN_EXTENSION = /\.md$/i
@@ -107,6 +109,63 @@ async function writeFileContent(documentPath: string, content: string, userId: s
   
   // Write file
   await writeFile(absolutePath, content, "utf-8")
+}
+
+function resolveStoredPath(src: string, userId: string) {
+  const trimmed = src.replace(/^\/+/, "")
+  const userSegment = sanitizeUserSegment(userId)
+  if (!userSegment) return trimmed
+  const parts = trimmed.split("/").filter(Boolean)
+  if (parts[0] === userSegment) return trimmed
+  return [userSegment, ...parts].join("/")
+}
+
+function extractUploadPathsFromMarkdown(content: string, userId: string): string[] {
+  const paths = new Set<string>()
+  const userSegment = sanitizeUserSegment(userId)
+
+  // Catch file-node placeholder links
+  const fileNodeRegex = /file-node:\/\/file[^\s\)]*/g
+  const matches = content.match(fileNodeRegex) || []
+  for (const match of matches) {
+    try {
+      const url = new URL(match)
+      const src = url.searchParams.get("src") || ""
+      if (src) {
+        paths.add(resolveStoredPath(src, userSegment))
+      }
+    } catch {
+      // ignore malformed
+    }
+  }
+
+  // Catch markdown images ![alt](path)
+  const imageRegex = /!\[[^\]]*\]\(([^)]+)\)/g
+  let imgMatch: RegExpExecArray | null
+  while ((imgMatch = imageRegex.exec(content)) !== null) {
+    const src = imgMatch[1]
+    if (!src || src.startsWith("http") || src.startsWith("data:")) continue
+    paths.add(resolveStoredPath(src, userSegment))
+  }
+
+  return Array.from(paths)
+}
+
+async function deleteUploadsForMarkdown(content: string, userId: string) {
+  const paths = extractUploadPathsFromMarkdown(content, userId)
+  if (!paths.length) return
+
+  await Promise.allSettled(
+    paths.map(async (filePath) => {
+      try {
+        await deleteStoredFile(filePath, userId)
+      } catch (error) {
+        if (!(error instanceof FileStorageError) || error.status !== 404) {
+          console.warn(`Failed to delete stored file ${filePath}:`, error)
+        }
+      }
+    })
+  )
 }
 
 async function documentRecordToMeta(
@@ -591,6 +650,14 @@ export async function deleteMarkdownFile(id: string, userId: string) {
     throw new MarkdownFileOperationError("Document not found", 404)
   }
 
+  // Attempt to cleanup uploaded assets referenced in markdown before deletion
+  try {
+    const content = await readFileContent(existing.document_path, userId)
+    await deleteUploadsForMarkdown(content, userId)
+  } catch (error) {
+    console.warn(`Failed to cleanup uploads for document ${existing.document_path}:`, error)
+  }
+
   // Delete file
   const absolutePath = getAbsoluteFilePath(existing.document_path, userId)
   await rm(absolutePath, { force: true })
@@ -677,6 +744,7 @@ export async function renameFolder(folderPathInput: string, newNameInput: string
 
   // Update database in transaction
   const timestamp = new Date().toISOString()
+
   const transaction = db.transaction(() => {
     // Update the folder itself first
     db.prepare("UPDATE folders SET folder_path = ?, updated_at = ? WHERE folder_path = ? AND user_id = ?").run(
@@ -741,6 +809,18 @@ export async function deleteFolder(folderPathInput: string, userId: string) {
   const documentsToDelete = db
     .prepare("SELECT document_path FROM documents WHERE (document_path = ? OR document_path LIKE ?) AND user_id = ?")
     .all(sanitized, `${sanitized}/%`, userId) as Array<{ document_path: string }>
+
+  // Clean up uploaded assets referenced in markdown files within this folder tree
+  await Promise.allSettled(
+    documentsToDelete.map(async (doc) => {
+      try {
+        const content = await readFileContent(doc.document_path, userId)
+        await deleteUploadsForMarkdown(content, userId)
+      } catch (error) {
+        console.warn(`Failed to cleanup uploads for document ${doc.document_path}:`, error)
+      }
+    })
+  )
 
   const transaction = db.transaction(() => {
     // Delete files

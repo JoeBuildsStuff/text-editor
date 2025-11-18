@@ -11,7 +11,8 @@ The application uses a **local-first file storage** approach. All uploaded files
 - **Local Storage**: Files stored on server file system
 - **User Isolation**: Each user's files are stored in separate directories
 - **Path-Based Storage**: Files referenced by relative paths, not URLs
-- **Automatic Cleanup**: Files deleted when removed from editor
+- **Editor-Safe Serialization**: File nodes serialize to `file-node://` links inside markdown so they survive round-trips and can be restored on load
+- **Automatic Cleanup**: Files deleted when removed from editor and when their markdown documents/folders are deleted
 - **Type Validation**: File type and size validation on upload
 - **Secure Access**: Authentication required for all file operations
 
@@ -87,6 +88,8 @@ pathPrefix: "notes" (optional)
 ### 4. Editor Integration
 
 - File path stored in editor content (not base64)
+- File nodes serialize to `file-node://` markdown links so custom nodes survive markdown save/load
+- User segment is stripped during serialization and re-applied on load so content stays portable but still user-scoped
 - Node view components request URLs on render
 - Temporary URLs generated via `/api/files/serve`
 
@@ -158,6 +161,12 @@ Delete a file from storage.
 ```
 
 See [API Reference](./api-reference.md) for complete endpoint documentation.
+
+### Cleanup on Document/Folder Delete
+
+- When a markdown document is deleted, the server scans its content for image paths and `file-node://` links and attempts to delete any referenced uploads.
+- Folder deletes perform the same cleanup for every document in the folder tree before removing files and database records.
+- Cleanup is best-effort and tolerant of already-missing files (404s are ignored).
 
 ## File Validation
 
@@ -430,4 +439,3 @@ For high-scale deployments:
 - [Architecture Overview](./architecture.md) - System design
 - [Development Guide](./development-guide.md) - Setup instructions
 - [Tiptap README](../src/components/tiptap/README.md) - Editor integration
-

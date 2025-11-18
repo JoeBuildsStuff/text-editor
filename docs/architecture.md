@@ -192,7 +192,7 @@ Next.js App Router with SSR:
    │
 8. Insert into editor as node
    │
-9. Store path in markdown content
+9. Store path in markdown content (file nodes are serialized as `file-node://` links so they survive markdown save/load)
 ```
 
 ### Document Load Flow
@@ -208,13 +208,15 @@ Next.js App Router with SSR:
    │
 5. Render editor with content
    │
-6. For each file reference:
+6. Restore `file-node://` links back into file nodes (user segment reapplied to paths)
+   │
+7. For each file reference:
    │   │
    │   └─► GET /api/files/serve?path=...
    │       │
    │       └─► Return temporary URL
    │
-7. Display files in editor
+8. Display files in editor
 ```
 
 ## Security Architecture
@@ -299,4 +301,3 @@ Next.js App Router with SSR:
 - [File Storage System](./file-storage.md) - File upload architecture
 - [API Reference](./api-reference.md) - API endpoints
 - [Deployment Guide](./deployment.md) - Production deployment
-

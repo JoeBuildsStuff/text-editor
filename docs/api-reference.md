@@ -278,6 +278,11 @@ Delete a document or folder.
 - `404 Not Found` - Document/folder not found
 - `500 Internal Server Error` - Server error
 
+**Behavior Notes**:
+- When deleting a document, the server scans its markdown for uploaded assets (images and `file-node://` links) and attempts to delete those files from storage.
+- Folder deletes perform the same cleanup for every document in the folder tree before removing files and DB records.
+- Cleanup is tolerant of missing files (404s are ignored) so repeated deletes remain idempotent.
+
 **Notes**:
 - Deleting a folder recursively deletes all nested folders and documents
 - Both database records and files are removed
@@ -552,4 +557,3 @@ Currently, there is no rate limiting implemented. Consider adding rate limiting 
 - [File Storage System](./file-storage.md) - File upload architecture
 - [Authentication](./authentication.md) - Auth system details
 - [Development Guide](./development-guide.md) - Development setup
-

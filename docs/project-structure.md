@@ -94,6 +94,7 @@ src/components/
 │   ├── custom-image-view.tsx    # Image node view
 │   ├── file-node-view.tsx       # File node view
 │   ├── file-document-preview.tsx # Document preview
+│   ├── file-node-serialization.ts # Serialize/restore file nodes inside markdown
 │   ├── bubble-menu.tsx          # Floating menu
 │   ├── fixed-menu.tsx           # Fixed toolbar
 │   ├── code-block.tsx           # Code block extension
@@ -131,6 +132,7 @@ src/lib/
 ├── db.ts                    # Database connection (documents.db)
 ├── file-storage.ts          # File storage utilities
 ├── markdown-files.ts        # Document CRUD operations
+├── user-paths.ts            # User-specific path sanitization helpers
 ├── uploads/
 │   └── config.ts            # Upload configuration
 └── utils.ts                 # General utilities
@@ -303,4 +305,3 @@ import { useMobile } from "@/hooks/use-mobile";
 - [Architecture Overview](./architecture.md) - System design
 - [Development Guide](./development-guide.md) - Setup and workflow
 - [API Reference](./api-reference.md) - API endpoints
-

@@ -295,6 +295,7 @@ pnpm start
 - Keep components close to where they're used
 - Extract reusable logic to `src/lib/`
 - Use absolute imports with `@/` prefix
+- When working on Tiptap markdown with file uploads, use `file-node-serialization.ts` helpers instead of raw `editor.getMarkdown()` so file nodes round-trip correctly, and use `sanitizeUserSegment` for any user-relative paths
 
 ### Naming
 
@@ -381,4 +382,3 @@ pnpm update           # Update dependencies
 - [Project Structure](./project-structure.md) - Codebase organization
 - [API Reference](./api-reference.md) - API endpoints
 - [Database Schema](./database-schema.md) - Database structure
-
