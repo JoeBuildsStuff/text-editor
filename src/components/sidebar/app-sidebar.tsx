@@ -32,6 +32,7 @@ import {
   useSensors,
   closestCenter,
   useDndContext,
+  type CollisionDetection,
 } from "@dnd-kit/core"
 import {
   SortableContext,
@@ -628,6 +629,15 @@ export function AppSidebar() {
       activationConstraint: { distance: 6 },
     })
   )
+  const collisionDetection = useCallback<CollisionDetection>((args) => {
+    const collisions = closestCenter(args)
+    if (collisions.length <= 1) {
+      return collisions
+    }
+
+    const nonRootCollisions = collisions.filter((collision) => collision.id !== ROOT_DROPPABLE_ID)
+    return nonRootCollisions.length ? nonRootCollisions : collisions
+  }, [])
   const [activeDragItem, setActiveDragItem] = useState<{ label: string } | null>(null)
 
   const updateSortOrder = useCallback(async (id: string, type: "document" | "folder", sortOrder: number) => {
@@ -647,6 +657,49 @@ export function AppSidebar() {
       toast.error(error instanceof Error ? error.message : "Failed to save order")
     }
   }, [])
+  const getFolderIdByPath = useCallback(
+    (folderPath?: string) => {
+      if (!folderPath) return undefined
+      return folders.find((folder) => folder.folderPath === folderPath)?.id
+    },
+    [folders]
+  )
+  const assignSortOrders = useCallback(
+    (items: SidebarTreeElement[], skipIds?: Set<string>) => {
+      const assignments = new Map<string, number>()
+      const updates: Promise<void>[] = []
+
+      items.forEach((item, index) => {
+        const nextSortOrder = (index + 1) * 1000
+        assignments.set(item.id, nextSortOrder)
+
+        if (skipIds?.has(item.id)) {
+          return
+        }
+
+        const dbId =
+          item.kind === "document" ? item.documentId : getFolderIdByPath(item.folderPath)
+
+        if (!dbId) {
+          return
+        }
+
+        if (item.sortOrder === nextSortOrder) {
+          return
+        }
+
+        updates.push(updateSortOrder(dbId, item.kind, nextSortOrder))
+      })
+
+      const promise =
+        updates.length > 0
+          ? Promise.allSettled(updates).then(() => undefined)
+          : Promise.resolve()
+
+      return { assignments, promise }
+    },
+    [getFolderIdByPath, updateSortOrder]
+  )
 
   const loadDocuments = useCallback(
     async ({
@@ -1191,7 +1244,7 @@ export function AppSidebar() {
 
       // 1. Handle Reordering / Moving
       // Check if both items have sortOrder (implies they are sortable items in the tree)
-      if (typeof activeData.sortOrder === 'number' && typeof overData.sortOrder === 'number') {
+      if (typeof activeData.sortOrder === "number" && typeof overData.sortOrder === "number") {
         const activeId = active.id as string
         const overId = over.id as string
 
@@ -1200,54 +1253,33 @@ export function AppSidebar() {
           const overContext = findContext(treeElements, overId)
 
           if (activeContext && overContext) {
-            const isOverFolder = overData.type === 'folder'
+            const isOverFolder = overData.type === "folder"
 
             // Check for "Move Into Folder" (Middle Zone)
             if (isOverFolder && isMiddleZone) {
-              // Handled below in legacy logic, or we can do it here
-              // Let's fall through to legacy logic for "Move Into"
+              // handled below
             } else {
               // Reordering (Same list) OR Moving to specific position (Cross list)
 
               const siblings = overContext.siblings
-              const overIndex = siblings.findIndex(x => x.id === overId)
+              const overIndex = siblings.findIndex((x) => x.id === overId)
 
               if (overIndex !== -1) {
-                let newSortOrder = 0
-
                 if (activeContext.siblings === overContext.siblings) {
-                  // Same list reorder
-                  const oldIndex = activeContext.siblings.findIndex(x => x.id === activeId)
-                  const newOrderArray = arrayMove(siblings, oldIndex, overIndex)
-
-                  const prevItem = newOrderArray[overIndex - 1]
-                  const nextItem = newOrderArray[overIndex + 1]
-
-                  if (!prevItem && nextItem) {
-                    newSortOrder = (nextItem.sortOrder ?? 0) - 1000
-                  } else if (prevItem && !nextItem) {
-                    newSortOrder = (prevItem.sortOrder ?? 0) + 1000
-                  } else if (prevItem && nextItem) {
-                    newSortOrder = ((prevItem.sortOrder ?? 0) + (nextItem.sortOrder ?? 0)) / 2
+                  // Same list reorder: reindex the full list to guarantee stable ordering
+                  const oldIndex = activeContext.siblings.findIndex((x) => x.id === activeId)
+                  if (oldIndex === -1) {
+                    return
                   }
-
-                  // Update Sort Order Only
-                  const item = siblings[oldIndex]
-                  const type = item.kind
-                  let dbId = type === "document" ? item.documentId! : (folders.find(f => f.folderPath === item.folderPath)?.id ?? "")
-
-                  if (dbId) {
-                    updateSortOrder(dbId, type, newSortOrder)
-                    loadDocuments({ silent: true })
-                  }
+                  const newOrderArray = arrayMove([...activeContext.siblings], oldIndex, overIndex)
+                  const { promise } = assignSortOrders(newOrderArray)
+                  promise.then(() => {
+                    void loadDocuments({ silent: true })
+                  })
                   return
                 } else {
                   // Cross list move & insert
                   // Determine insertion index
-                  // If relativeY < 0.5 (top), insert before overIndex
-                  // If relativeY > 0.5 (bottom), insert after overIndex
-
-                  // We need to recalculate relativeY here because isMiddleZone is boolean
                   let insertAfter = true
                   if (active.rect.current.translated && over.rect) {
                     const activeRect = active.rect.current.translated
@@ -1261,31 +1293,32 @@ export function AppSidebar() {
 
                   const insertionIndex = insertAfter ? overIndex + 1 : overIndex
 
-                  const prevItem = siblings[insertionIndex - 1]
-                  const nextItem = siblings[insertionIndex]
-
-                  if (!prevItem && nextItem) {
-                    newSortOrder = (nextItem.sortOrder ?? 0) - 1000
-                  } else if (prevItem && !nextItem) {
-                    newSortOrder = (prevItem.sortOrder ?? 0) + 1000
-                  } else if (prevItem && nextItem) {
-                    newSortOrder = ((prevItem.sortOrder ?? 0) + (nextItem.sortOrder ?? 0)) / 2
-                  } else {
-                    // Empty list or only item? 
-                    // If siblings is empty? No, overId exists.
-                    // If inserting into a list where overId is the only item.
-                    // If insertAfter: prev=over, next=undefined -> over + 1000
-                    // If insertBefore: prev=undefined, next=over -> over - 1000
-                    // Logic holds.
-                    // Fallback
-                    newSortOrder = (siblings[overIndex].sortOrder ?? 0) + (insertAfter ? 1000 : -1000)
-                  }
-
-                  // Perform Move with SortOrder
-                  const targetFolderPath = overContext.parent?.folderPath
-
                   if (activeData.type === "document" && activeData.documentId) {
-                    triggerMoveDocument(activeData.documentId, targetFolderPath, activeData.label, newSortOrder)
+                    const sourceItems = activeContext.siblings.filter((item) => item.id !== activeId)
+                    const { promise: sourcePromise } = assignSortOrders(sourceItems)
+
+                    const targetItems = [...siblings]
+                    const placeholder: SidebarTreeElement = {
+                      id: activeId,
+                      name: activeData.label ?? "Document",
+                      isSelectable: true,
+                      kind: "document",
+                      documentId: activeData.documentId,
+                    }
+                    targetItems.splice(insertionIndex, 0, placeholder)
+
+                    const skipIds = new Set<string>([activeId])
+                    const { assignments, promise: targetPromise } = assignSortOrders(targetItems, skipIds)
+                    const nextSortOrder = assignments.get(activeId) ?? (targetItems.length * 1000)
+
+                    Promise.all([sourcePromise, targetPromise]).then(() => {
+                      triggerMoveDocument(
+                        activeData.documentId,
+                        overContext.parent?.folderPath,
+                        activeData.label,
+                        nextSortOrder
+                      )
+                    })
                     return
                   }
                 }
@@ -1326,7 +1359,7 @@ export function AppSidebar() {
         )
       }
     },
-    [triggerMoveDocument, treeElements, folders, updateSortOrder, loadDocuments]
+    [triggerMoveDocument, treeElements, assignSortOrders, loadDocuments]
   )
 
   const handleDragCancel = useCallback(() => {
@@ -1498,7 +1531,7 @@ export function AppSidebar() {
               {!isLoadingFiles && !filesError && treeElements.length > 0 && (
                 <DndContext
                   sensors={sensors}
-                  collisionDetection={closestCenter}
+                  collisionDetection={collisionDetection}
                   onDragStart={handleDragStart}
                   onDragEnd={handleDragEnd}
                   onDragCancel={handleDragCancel}
