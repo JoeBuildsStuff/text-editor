@@ -3,6 +3,7 @@
 // TODO: The tree flickers because we refetch documents on every route change.
 //       Revisit this once we have a shared cache (see README).
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react"
+import type { ReactNode } from "react"
 
 import {
   Sidebar,
@@ -19,6 +20,18 @@ import {
   SidebarMenuSub,
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar"
+import {
+  DndContext,
+  DragEndEvent,
+  DragOverlay,
+  DragStartEvent,
+  PointerSensor,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core"
+import { CSS } from "@dnd-kit/utilities"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -176,164 +189,273 @@ function buildDocumentsTree(
   return root.children ?? []
 }
 
-function renderCollapsibleTree(
-  elements: SidebarTreeElement[],
-  options: {
-    onSelect: (slug: string) => void
-    selectedSlug?: string
-    openFolders: Set<string>
-    onToggleFolder: (folderId: string) => void
-    isActionPending: boolean
-    onCreateDocument: (folderPath?: string) => void
-    onCreateFolder: (folderPath?: string) => void
-    onDeleteFolder: (folderPath: string) => void
-    onDeleteDocument: (documentId: string, slug?: string) => void
-    onRenameFolder: (folderPath: string, currentName: string) => void
-    onRenameDocument: (documentId: string, currentName: string) => void
-    isNested?: boolean
-  }
-) {
-  return elements.map((element) => {
-    if (element.kind === "folder") {
-      const isOpen = options.openFolders.has(element.id)
-      const folderPath =
-        element.folderPath && element.folderPath.length > 0 ? element.folderPath : undefined
+const ROOT_DROPPABLE_ID = `${DOCUMENTS_ROOT_ID}-root` as const
 
-      return (
-        <ContextMenu key={element.id}>
-          <Collapsible
-            open={isOpen}
-            onOpenChange={() => options.onToggleFolder(element.id)}
-            className="group/collapsible"
-          >
-            <SidebarMenuItem>
-              <ContextMenuTrigger asChild>
-                <CollapsibleTrigger asChild>
-                  <SidebarMenuButton className={cn(options.isNested && "mr-0!")}>
-                    {isOpen ? (
-                      <FolderOpenIcon className="w-3.5 h-3.5 mr-2 flex-none text-muted-foreground" />
-                    ) : (
-                      <FolderIcon className="w-3.5 h-3.5 mr-2 flex-none text-muted-foreground" />
-                    )}
-                    <span className="font-normal">{element.name}</span>
-                    <ChevronRight
-                      className={cn(
-                        "ml-auto transition-transform w-3.5 h-3.5 text-muted-foreground",
-                        isOpen && "rotate-90"
-                      )}
-                    />
-                  </SidebarMenuButton>
-                </CollapsibleTrigger>
-              </ContextMenuTrigger>
-              <CollapsibleContent>
-                <SidebarMenuSub className="mr-0! pr-0!">
-                  <SidebarMenuSubItem>
-                    {renderCollapsibleTree(element.children ?? [], { ...options, isNested: true })}
-                  </SidebarMenuSubItem>
-                </SidebarMenuSub>
-              </CollapsibleContent>
-            </SidebarMenuItem>
-          </Collapsible>
-          <ContextMenuContent>
-            <ContextMenuItem
-              disabled={options.isActionPending}
-              onSelect={() => options.onCreateDocument(folderPath)}
-            >
-              <FilePlusIcon className="size-4" />
-              Add Document
-            </ContextMenuItem>
-            <ContextMenuItem
-              disabled={options.isActionPending}
-              onSelect={() => options.onCreateFolder(folderPath)}
-            >
-              <FolderIcon className="size-4" />
-              Add Folder
-            </ContextMenuItem>
-            {folderPath && (
-              <>
-                <ContextMenuSeparator />
-                <ContextMenuItem
-                  disabled={options.isActionPending}
-                  onSelect={() => options.onRenameFolder(folderPath, element.name)}
-                >
-                  <Pencil className="size-4" />
-                  Rename Folder
-                </ContextMenuItem>
-                <ContextMenuItem
-                  variant="destructive"
-                  disabled={options.isActionPending}
-                  onSelect={() => options.onDeleteFolder(folderPath)}
-                >
-                  <FolderX className="size-4" />
-                  Delete Folder
-                </ContextMenuItem>
-              </>
-            )}
-          </ContextMenuContent>
-        </ContextMenu>
-      )
-    }
+type TreeRenderOptions = {
+  onSelect: (slug: string) => void
+  selectedSlug?: string
+  openFolders: Set<string>
+  onToggleFolder: (folderId: string) => void
+  isActionPending: boolean
+  onCreateDocument: (folderPath?: string) => void
+  onCreateFolder: (folderPath?: string) => void
+  onDeleteFolder: (folderPath: string) => void
+  onDeleteDocument: (documentId: string, slug?: string) => void
+  onRenameFolder: (folderPath: string, currentName: string) => void
+  onRenameDocument: (documentId: string, currentName: string) => void
+  isNested?: boolean
+}
 
-    const isSelected = options.selectedSlug === element.id
-    const fileButton = (
-      <SidebarMenuButton
-        onClick={() => options.onSelect(element.id)}
-        className={cn(
-          "w-full justify-start",
-          options.isNested && "mr-0!",
-          isSelected ? "bg-muted/50 hover:bg-muted font-semibold" : "hover:bg-muted"
-        )}
-      >
-        <FileIcon className="w-3.5 h-3.5 mr-2 flex-none text-muted-foreground" />
-        <span className="font-normal">{element.name}</span>
-      </SidebarMenuButton>
+function SidebarTreeNodes({
+  elements,
+  options,
+}: {
+  elements: SidebarTreeElement[]
+  options: TreeRenderOptions
+}) {
+  if (!elements.length) return null
+  return elements.map((element) =>
+    element.kind === "folder" ? (
+      <FolderTreeNode key={element.id} element={element} options={options} />
+    ) : (
+      <DocumentTreeNode key={element.id} element={element} options={options} />
     )
+  )
+}
 
-    const menuContent = (
-      <>
-        <ContextMenuTrigger asChild>{fileButton}</ContextMenuTrigger>
-        <ContextMenuContent>
-          <ContextMenuItem
-            disabled={options.isActionPending}
-            onSelect={() => {
-              if (element.documentId) {
-                options.onRenameDocument(element.documentId, element.name)
-              }
-            }}
-          >
-            <Pencil className="size-4" />
-            Rename Document
-          </ContextMenuItem>
-          <ContextMenuItem
-            variant="destructive"
-            disabled={options.isActionPending}
-            onSelect={() => {
-              if (element.documentId) {
-                options.onDeleteDocument(element.documentId, element.id)
-              }
-            }}
-          >
-            <Trash2 className="size-4" />
-            Delete Document
-          </ContextMenuItem>
-        </ContextMenuContent>
-      </>
-    )
+function FolderTreeNode({
+  element,
+  options,
+}: {
+  element: SidebarTreeElement
+  options: TreeRenderOptions
+}) {
+  const isOpen = options.openFolders.has(element.id)
+  const folderPath =
+    element.folderPath && element.folderPath.length > 0 ? element.folderPath : undefined
 
-    if (options.isNested) {
-      return (
-        <ContextMenu key={element.id}>
-          {menuContent}
-        </ContextMenu>
-      )
-    }
-
-    return (
-      <SidebarMenuItem key={element.id}>
-        <ContextMenu>{menuContent}</ContextMenu>
-      </SidebarMenuItem>
-    )
+  const { setNodeRef, isOver } = useDroppable({
+    id: `folder:${element.id}`,
+    data: {
+      type: "folder" as const,
+      folderPath,
+    },
   })
+
+  return (
+    <ContextMenu>
+      <div
+        ref={setNodeRef}
+        className={cn("rounded-sm", isOver && "bg-muted/40")}
+      >
+        <Collapsible
+          open={isOpen}
+          onOpenChange={() => options.onToggleFolder(element.id)}
+          className="group/collapsible"
+        >
+          <SidebarMenuItem>
+            <ContextMenuTrigger asChild>
+              <CollapsibleTrigger asChild>
+                <SidebarMenuButton
+                  className={cn(
+                    options.isNested && "mr-0!",
+                    isOver && "bg-muted/60"
+                  )}
+                >
+                  {isOpen ? (
+                    <FolderOpenIcon className="w-3.5 h-3.5 mr-2 flex-none text-muted-foreground" />
+                  ) : (
+                    <FolderIcon className="w-3.5 h-3.5 mr-2 flex-none text-muted-foreground" />
+                  )}
+                  <span className="font-normal">{element.name}</span>
+                  <ChevronRight
+                    className={cn(
+                      "ml-auto transition-transform w-3.5 h-3.5 text-muted-foreground",
+                      isOpen && "rotate-90"
+                    )}
+                  />
+                </SidebarMenuButton>
+              </CollapsibleTrigger>
+            </ContextMenuTrigger>
+            <CollapsibleContent>
+              <SidebarMenuSub className="mr-0! pr-0!">
+                <SidebarMenuSubItem>
+                  <SidebarTreeNodes
+                    elements={element.children ?? []}
+                    options={{ ...options, isNested: true }}
+                  />
+                </SidebarMenuSubItem>
+              </SidebarMenuSub>
+            </CollapsibleContent>
+          </SidebarMenuItem>
+        </Collapsible>
+      </div>
+      <ContextMenuContent>
+        <ContextMenuItem
+          disabled={options.isActionPending}
+          onSelect={() => options.onCreateDocument(folderPath)}
+        >
+          <FilePlusIcon className="size-4" />
+          Add Document
+        </ContextMenuItem>
+        <ContextMenuItem
+          disabled={options.isActionPending}
+          onSelect={() => options.onCreateFolder(folderPath)}
+        >
+          <FolderIcon className="size-4" />
+          Add Folder
+        </ContextMenuItem>
+        {folderPath && (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              disabled={options.isActionPending}
+              onSelect={() => options.onRenameFolder(folderPath, element.name)}
+            >
+              <Pencil className="size-4" />
+              Rename Folder
+            </ContextMenuItem>
+            <ContextMenuItem
+              variant="destructive"
+              disabled={options.isActionPending}
+              onSelect={() => options.onDeleteFolder(folderPath)}
+            >
+              <FolderX className="size-4" />
+              Delete Folder
+            </ContextMenuItem>
+          </>
+        )}
+      </ContextMenuContent>
+    </ContextMenu>
+  )
+}
+
+function DocumentTreeNode({
+  element,
+  options,
+}: {
+  element: SidebarTreeElement
+  options: TreeRenderOptions
+}) {
+  const folderSegments = element.documentPath?.split("/") ?? []
+  folderSegments.pop()
+  const currentFolderPath = folderSegments.join("/") || undefined
+
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: `document:${element.id}`,
+    data: {
+      type: "document" as const,
+      documentId: element.documentId,
+      slug: element.id,
+      currentFolderPath,
+      label: element.name,
+    },
+  })
+
+  const dragStyle = transform
+    ? {
+        transform: CSS.Translate.toString(transform),
+      }
+    : undefined
+
+  const hiddenWhileDragging = cn("transition-opacity", isDragging && "opacity-0")
+  const isSelected = options.selectedSlug === element.id
+
+  const fileButton = (
+    <SidebarMenuButton
+      onClick={() => options.onSelect(element.id)}
+      className={cn(
+        "w-full justify-start",
+        options.isNested && "mr-0!",
+        isSelected ? "bg-muted/50 hover:bg-muted font-semibold" : "hover:bg-muted"
+      )}
+      {...attributes}
+      {...listeners}
+    >
+      <FileIcon className="w-3.5 h-3.5 mr-2 flex-none text-muted-foreground" />
+      <span className="font-normal">{element.name}</span>
+    </SidebarMenuButton>
+  )
+
+  const menuContent = (
+    <>
+      <ContextMenuTrigger asChild>{fileButton}</ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem
+          disabled={options.isActionPending}
+          onSelect={() => {
+            if (element.documentId) {
+              options.onRenameDocument(element.documentId, element.name)
+            }
+          }}
+        >
+          <Pencil className="size-4" />
+          Rename Document
+        </ContextMenuItem>
+        <ContextMenuItem
+          variant="destructive"
+          disabled={options.isActionPending}
+          onSelect={() => {
+            if (element.documentId) {
+              options.onDeleteDocument(element.documentId, element.id)
+            }
+          }}
+        >
+          <Trash2 className="size-4" />
+          Delete Document
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </>
+  )
+
+  const ghostClasses = cn(
+    "pointer-events-none absolute inset-0 flex w-full items-center gap-2 rounded-md p-2 text-left text-sm text-muted-foreground italic",
+    options.isNested && "mr-0!",
+    isSelected ? "bg-muted/50 font-semibold" : "bg-transparent"
+  )
+
+  const draggableContent = (
+    <div className="relative">
+      <div ref={setNodeRef} style={dragStyle} className={hiddenWhileDragging}>
+        {menuContent}
+      </div>
+      {isDragging && (
+        <div className={ghostClasses}>
+          <FileIcon className="w-3.5 h-3.5 mr-2 flex-none text-muted-foreground" />
+          <span className="font-normal truncate">{element.name}</span>
+        </div>
+      )}
+    </div>
+  )
+
+  if (options.isNested) {
+    return <ContextMenu>{draggableContent}</ContextMenu>
+  }
+
+  return (
+    <SidebarMenuItem>
+      <ContextMenu>{draggableContent}</ContextMenu>
+    </SidebarMenuItem>
+  )
+}
+
+function RootDropZone({ children }: { children: ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: ROOT_DROPPABLE_ID,
+    data: {
+      type: "folder" as const,
+      folderPath: undefined,
+    },
+  })
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn("rounded-md transition-colors", isOver && "bg-muted/30")}
+    >
+      {children}
+    </div>
+  )
 }
 
 export function AppSidebar() {
@@ -351,6 +473,12 @@ export function AppSidebar() {
   const [renamePath, setRenamePath] = useState<string>("")
   const [renameCurrentName, setRenameCurrentName] = useState<string>("")
   const [renameNewName, setRenameNewName] = useState<string>("")
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 6 },
+    })
+  )
+  const [activeDragItem, setActiveDragItem] = useState<{ label: string } | null>(null)
 
   const loadDocuments = useCallback(
     async ({
@@ -678,6 +806,44 @@ export function AppSidebar() {
     [loadDocuments, closeFolderPath, selectedSlug, router]
   )
 
+  const moveDocumentToFolder = useCallback(
+    async (documentId: string, targetFolderPath?: string, label?: string) => {
+      const response = await fetch("/api/markdown", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id: documentId,
+          targetFolderPath: targetFolderPath ?? null,
+        }),
+      })
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}))
+        throw new Error(body.error ?? "Failed to move document")
+      }
+
+      const data = await response.json()
+      const document = data.document as { documentPath?: string; title?: string } | null
+
+      await loadDocuments({ silent: true })
+
+      if (document?.documentPath) {
+        const parentPath = document.documentPath.split("/").slice(0, -1).join("/")
+        if (parentPath) {
+          openFolderPath(parentPath)
+        }
+      } else if (targetFolderPath) {
+        openFolderPath(targetFolderPath)
+      }
+
+      const docLabel = document?.title ?? label ?? "Document"
+      toast.success(`Moved "${docLabel}"`)
+    },
+    [loadDocuments, openFolderPath]
+  )
+
   const triggerCreateDocument = useCallback(
     (folderPath?: string) => {
       if (isActionPending) return
@@ -736,6 +902,19 @@ export function AppSidebar() {
     [isActionPending, startActionTransition, deleteFolderAtPath]
   )
 
+  const triggerMoveDocument = useCallback(
+    (documentId: string, targetFolderPath?: string, label?: string) => {
+      if (!documentId || isActionPending) return
+      startActionTransition(() => {
+        moveDocumentToFolder(documentId, targetFolderPath, label).catch((error) => {
+          console.error(error)
+          toast.error(error instanceof Error ? error.message : "Unable to move document")
+        })
+      })
+    },
+    [isActionPending, startActionTransition, moveDocumentToFolder]
+  )
+
   const handleCreateDocument = useCallback(() => {
     triggerCreateDocument()
   }, [triggerCreateDocument])
@@ -758,6 +937,46 @@ export function AppSidebar() {
     setRenameCurrentName(currentName)
     setRenameNewName(currentName)
     setRenameDialogOpen(true)
+  }, [])
+
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    const data = event.active.data.current
+    if (data?.type === "document") {
+      setActiveDragItem({ label: data.label ?? "Document" })
+    }
+  }, [])
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      setActiveDragItem(null)
+
+      const activeData = event.active.data.current
+      const overData = event.over?.data.current
+
+      if (
+        !activeData ||
+        activeData.type !== "document" ||
+        !overData ||
+        overData.type !== "folder" ||
+        !activeData.documentId
+      ) {
+        return
+      }
+
+      const targetFolderPath = overData.folderPath ?? undefined
+      const currentFolderPath = activeData.currentFolderPath ?? undefined
+
+      if (targetFolderPath === currentFolderPath) {
+        return
+      }
+
+      triggerMoveDocument(activeData.documentId, targetFolderPath, activeData.label)
+    },
+    [triggerMoveDocument]
+  )
+
+  const handleDragCancel = useCallback(() => {
+    setActiveDragItem(null)
   }, [])
 
   const handleRenameSubmit = useCallback(async () => {
@@ -923,21 +1142,41 @@ export function AppSidebar() {
                 </SidebarMenu>
               )}
               {!isLoadingFiles && !filesError && treeElements.length > 0 && (
-                <SidebarMenu>
-                  {renderCollapsibleTree(treeElements, {
-                    onSelect: navigateToSlug,
-                    selectedSlug,
-                    openFolders,
-                    onToggleFolder: toggleFolder,
-                    isActionPending,
-                    onCreateDocument: triggerCreateDocument,
-                    onCreateFolder: triggerCreateFolder,
-                    onDeleteFolder: triggerDeleteFolder,
-                    onDeleteDocument: triggerDeleteDocument,
-                    onRenameFolder: handleRenameFolder,
-                    onRenameDocument: handleRenameDocument,
-                  })}
-                </SidebarMenu>
+                <DndContext
+                  sensors={sensors}
+                  onDragStart={handleDragStart}
+                  onDragEnd={handleDragEnd}
+                  onDragCancel={handleDragCancel}
+                >
+                  <RootDropZone>
+                    <SidebarMenu>
+                      <SidebarTreeNodes
+                        elements={treeElements}
+                        options={{
+                          onSelect: navigateToSlug,
+                          selectedSlug,
+                          openFolders,
+                          onToggleFolder: toggleFolder,
+                          isActionPending,
+                          onCreateDocument: triggerCreateDocument,
+                          onCreateFolder: triggerCreateFolder,
+                          onDeleteFolder: triggerDeleteFolder,
+                          onDeleteDocument: triggerDeleteDocument,
+                          onRenameFolder: handleRenameFolder,
+                          onRenameDocument: handleRenameDocument,
+                        }}
+                      />
+                    </SidebarMenu>
+                  </RootDropZone>
+                  <DragOverlay>
+                    {activeDragItem ? (
+                      <div className="flex items-center gap-2 rounded-md bg-muted px-3 py-1.5 text-sm ring-1 ring-foreground">
+                        <FileIcon className="size-4 text-muted-foreground" />
+                        <span>{activeDragItem.label}</span>
+                      </div>
+                    ) : null}
+                  </DragOverlay>
+                </DndContext>
               )}
             </SidebarGroupContent>
           </SidebarGroup>

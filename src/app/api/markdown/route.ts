@@ -10,6 +10,7 @@ import {
   deleteMarkdownFile,
   listMarkdownItems,
   MarkdownFileOperationError,
+  moveMarkdownFile,
   renameMarkdownFile,
   renameFolder,
   updateMarkdownFileContent,
@@ -52,6 +53,11 @@ const payloadSchema = z
 const renameSchema = z.object({
   id: z.string().uuid(),
   title: z.string().min(1, "Title is required").max(128, "Title is too long"),
+});
+
+const moveDocumentSchema = z.object({
+  id: z.string().uuid(),
+  targetFolderPath: z.string().max(256).nullable().optional(),
 });
 
 const renameFolderSchema = z.object({
@@ -160,7 +166,14 @@ export async function PATCH(request: Request) {
       const folder = await renameFolder(payload.folderPath, payload.newName, session.user.id);
       return NextResponse.json({ folder });
     }
-    
+
+    // Check if this is a move operation
+    if ("targetFolderPath" in data) {
+      const payload = moveDocumentSchema.parse(data);
+      const document = await moveMarkdownFile(payload.id, payload.targetFolderPath, session.user.id);
+      return NextResponse.json({ document });
+    }
+
     // Otherwise, treat as document rename
     const payload = renameSchema.parse(data);
     const document = await renameMarkdownFile(payload.id, payload.title, session.user.id);

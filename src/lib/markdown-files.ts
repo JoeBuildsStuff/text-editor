@@ -597,6 +597,91 @@ export async function renameMarkdownFile(id: string, proposedTitle: string, user
   return documentRecordToMeta(updated, false)
 }
 
+export async function moveMarkdownFile(
+  id: string,
+  targetFolderPathInput: string | null | undefined,
+  userId: string
+) {
+  const db = getDatabase()
+
+  const existing = db
+    .prepare("SELECT * FROM documents WHERE id = ? AND user_id = ?")
+    .get(id, userId) as
+    | {
+        id: string
+        user_id: string
+        title: string
+        document_path: string
+        created_at: string
+        updated_at: string
+      }
+    | undefined
+
+  if (!existing) {
+    throw new MarkdownFileOperationError("Document not found", 404)
+  }
+
+  const sanitizedTarget = targetFolderPathInput
+    ? sanitizeFolderPath(targetFolderPathInput)
+    : ""
+  const targetFolderPath = sanitizedTarget?.length ? sanitizedTarget : undefined
+
+  if (targetFolderPath) {
+    const folderExists = db
+      .prepare("SELECT id FROM folders WHERE folder_path = ? AND user_id = ?")
+      .get(targetFolderPath, userId)
+
+    if (!folderExists) {
+      throw new MarkdownFileOperationError("Target folder does not exist", 404)
+    }
+  }
+
+  const filename = path.posix.basename(existing.document_path)
+  const nextDocumentPath = targetFolderPath
+    ? toPosixPath(`${targetFolderPath}/${filename}`)
+    : filename
+
+  if (nextDocumentPath === existing.document_path) {
+    return documentRecordToMeta(existing, false)
+  }
+
+  const conflict = db
+    .prepare("SELECT id FROM documents WHERE document_path = ? AND id != ? AND user_id = ?")
+    .get(nextDocumentPath, id, userId)
+
+  if (conflict) {
+    throw new MarkdownFileOperationError(
+      "A document with that name already exists in the target folder",
+      409
+    )
+  }
+
+  const oldAbsolutePath = getAbsoluteFilePath(existing.document_path, userId)
+  const newAbsolutePath = getAbsoluteFilePath(nextDocumentPath, userId)
+
+  await mkdir(path.dirname(newAbsolutePath), { recursive: true })
+  await rename(oldAbsolutePath, newAbsolutePath)
+
+  const timestamp = new Date().toISOString()
+
+  db.prepare(
+    "UPDATE documents SET document_path = ?, updated_at = ? WHERE id = ? AND user_id = ?"
+  ).run(nextDocumentPath, timestamp, id, userId)
+
+  const updated = db
+    .prepare("SELECT * FROM documents WHERE id = ? AND user_id = ?")
+    .get(id, userId) as {
+    id: string
+    user_id: string
+    title: string
+    document_path: string
+    created_at: string
+    updated_at: string
+  }
+
+  return documentRecordToMeta(updated, false)
+}
+
 export async function updateMarkdownFileContent(id: string, content: string, userId: string) {
   const db = getDatabase()
 
