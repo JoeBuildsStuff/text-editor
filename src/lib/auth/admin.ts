@@ -13,6 +13,57 @@ function getDb(): DatabaseType {
   return getAuthDb();
 }
 
+export function ensureAdminTables(db: DatabaseType = getDb()): void {
+  db.exec(
+    `CREATE TABLE IF NOT EXISTS admin_roles (
+      user_id TEXT PRIMARY KEY,
+      is_admin INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS admin_actions (
+      id TEXT PRIMARY KEY,
+      actor_user_id TEXT NOT NULL,
+      action TEXT NOT NULL,
+      target_user_id TEXT,
+      ip TEXT,
+      user_agent TEXT,
+      metadata TEXT,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_admin_actions_actor_created_at ON admin_actions(actor_user_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_admin_actions_target_created_at ON admin_actions(target_user_id, created_at DESC);
+  `
+  );
+}
+
+export type AdminActionInput = {
+  actorUserId: string;
+  action: string;
+  targetUserId?: string | null;
+  ip?: string | null;
+  userAgent?: string | null;
+  metadata?: unknown;
+};
+
+export function recordAdminAction(input: AdminActionInput): void {
+  const db = getDb();
+  ensureAdminTables(db);
+  const { actorUserId, action, targetUserId = null, ip = null, userAgent = null, metadata } = input;
+  let metadataJson: string | null = null;
+  if (metadata !== undefined) {
+    try {
+      metadataJson = JSON.stringify(metadata);
+    } catch {
+      metadataJson = null;
+    }
+  }
+  db.prepare(
+    `INSERT INTO admin_actions (id, actor_user_id, action, target_user_id, ip, user_agent, metadata, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(randomUUID(), actorUserId, action, targetUserId, ip, userAgent, metadataJson, Date.now());
+}
+
 export type AdminUserSummary = {
   id: string;
   email: string;
@@ -20,6 +71,19 @@ export type AdminUserSummary = {
   createdAt: string;
   isAdmin: boolean;
   sessionCount: number;
+};
+
+export type AdminActionEntry = {
+  id: string;
+  actorUserId: string;
+  actorEmail: string | null;
+  targetUserId: string | null;
+  targetEmail: string | null;
+  action: string;
+  ip: string | null;
+  userAgent: string | null;
+  metadata: unknown;
+  createdAt: string;
 };
 
 export type DeleteUserCascadeResult = {
@@ -43,6 +107,7 @@ export type AdminCreateUserInput = {
 
 export function listAdminUsers(): AdminUserSummary[] {
   const db = getDb();
+  ensureAdminTables(db);
   const rows = db
     .prepare(
       `SELECT 
@@ -75,8 +140,68 @@ export function listAdminUsers(): AdminUserSummary[] {
   }));
 }
 
+export function listAdminActions(limit = 50, offset = 0): AdminActionEntry[] {
+  const db = getDb();
+  ensureAdminTables(db);
+  const rows = db
+    .prepare(
+      `SELECT 
+         a.id as id,
+         a.actor_user_id as actor_user_id,
+         a.action as action,
+         a.target_user_id as target_user_id,
+         a.ip as ip,
+         a.user_agent as user_agent,
+         a.metadata as metadata,
+         a.created_at as created_at,
+         actor.email as actor_email,
+         target.email as target_email
+       FROM admin_actions a
+       LEFT JOIN user actor ON actor.id = a.actor_user_id
+       LEFT JOIN user target ON target.id = a.target_user_id
+       ORDER BY a.created_at DESC
+       LIMIT ? OFFSET ?`
+    )
+    .all(limit, offset) as Array<{
+      id: string;
+      actor_user_id: string;
+      action: string;
+      target_user_id: string | null;
+      ip: string | null;
+      user_agent: string | null;
+      metadata: string | null;
+      created_at: number;
+      actor_email: string | null;
+      target_email: string | null;
+    }>;
+
+  return rows.map((row) => {
+    let metadata: unknown = null;
+    if (row.metadata) {
+      try {
+        metadata = JSON.parse(row.metadata);
+      } catch {
+        metadata = row.metadata;
+      }
+    }
+    return {
+      id: row.id,
+      actorUserId: row.actor_user_id,
+      actorEmail: row.actor_email,
+      targetUserId: row.target_user_id ?? null,
+      targetEmail: row.target_email ?? null,
+      action: row.action,
+      ip: row.ip ?? null,
+      userAgent: row.user_agent ?? null,
+      metadata,
+      createdAt: new Date(row.created_at).toISOString(),
+    };
+  });
+}
+
 export function setUserAdmin(userId: string, isAdmin: boolean): void {
   const db = getDb();
+  ensureAdminTables(db);
   const now = Date.now();
   db.prepare(
     `INSERT INTO admin_roles (user_id, is_admin, created_at)
@@ -87,6 +212,7 @@ export function setUserAdmin(userId: string, isAdmin: boolean): void {
 
 export function deleteSessionsForUser(userId: string, sessionId?: string): number {
   const db = getDb();
+  ensureAdminTables(db);
   if (sessionId) {
     const result = db.prepare(`DELETE FROM session WHERE id = ? AND userId = ?`).run(sessionId, userId);
     return result.changes || 0;
@@ -107,14 +233,7 @@ export function deleteUserCascade(userId: string): DeleteUserCascadeResult {
   const authDb = getDb();
   const docsDb = getDocsDb();
 
-  // Ensure admin_roles table exists
-  authDb.exec(
-    `CREATE TABLE IF NOT EXISTS admin_roles (
-      user_id TEXT PRIMARY KEY,
-      is_admin INTEGER NOT NULL DEFAULT 0,
-      created_at INTEGER NOT NULL
-    );`
-  );
+  ensureAdminTables(authDb);
 
   // Documents DB cleanup
   const deletedDocuments = docsDb.prepare(`DELETE FROM documents WHERE user_id = ?`).run(userId).changes ?? 0;
@@ -165,14 +284,7 @@ export async function createUserWithPassword(input: AdminCreateUserInput) {
   }
 
   const authDb = getDb();
-  // ensure admin_roles exists
-  authDb.exec(
-    `CREATE TABLE IF NOT EXISTS admin_roles (
-      user_id TEXT PRIMARY KEY,
-      is_admin INTEGER NOT NULL DEFAULT 0,
-      created_at INTEGER NOT NULL
-    );`
-  );
+  ensureAdminTables(authDb);
 
   const existing = authDb
     .prepare(`SELECT id FROM user WHERE lower(email) = ? LIMIT 1`)

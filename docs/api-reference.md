@@ -680,6 +680,52 @@ Delete a user and cascade cleanup.
 }
 ```
 
+### `GET /api/admin/audit`
+
+Retrieve admin action audit log entries.
+
+**Query Parameters**:
+- `limit` (optional, default: `50`, max: `200`) - Number of entries to return
+- `offset` (optional, default: `0`) - Number of entries to skip
+
+**Response**:
+```json
+{
+  "actions": [
+    {
+      "id": "action-uuid",
+      "actorUserId": "admin-user-id",
+      "actorEmail": "admin@example.com",
+      "targetUserId": "user123",
+      "targetEmail": "user@example.com",
+      "action": "set_admin",
+      "ip": "192.168.1.1",
+      "userAgent": "Mozilla/5.0...",
+      "metadata": { "isAdmin": true },
+      "createdAt": "2024-01-01T00:00:00.000Z"
+    }
+  ]
+}
+```
+
+**Status Codes**:
+- `200 OK` - Success
+- `401 Unauthorized` - Not authenticated
+- `403 Forbidden` - Not an admin
+
+**Action Types**:
+- `create_user` - Admin created a new user
+- `set_admin` - Admin changed user's admin status
+- `revoke_sessions` - Admin revoked user sessions
+- `set_password` - Admin set/reset user password
+- `delete_user` - Admin deleted a user
+
+**Notes**:
+- Actions are listed newest first
+- Metadata contains action-specific information
+- IP and user agent are captured when available
+- All admin actions are automatically logged
+
 ## Rate Limiting
 
 Currently, there is no rate limiting implemented. Consider adding rate limiting for production deployments.

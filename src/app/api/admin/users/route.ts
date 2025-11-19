@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 
-import { createUserWithPassword, listAdminUsers, setUserAdmin } from "@/lib/auth/admin";
+import {
+  createUserWithPassword,
+  listAdminUsers,
+  recordAdminAction,
+  setUserAdmin,
+} from "@/lib/auth/admin";
 import { getSessionFromHeaders } from "@/lib/auth/session";
 
 function unauthorized() {
@@ -9,6 +14,14 @@ function unauthorized() {
 
 function forbidden() {
   return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+}
+
+function clientIp(headers: Headers) {
+  return (
+    headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    headers.get("x-real-ip") ??
+    null
+  );
 }
 
 export async function GET(request: Request) {
@@ -40,6 +53,15 @@ export async function PATCH(request: Request) {
   setUserAdmin(userId, isAdmin);
   const updated = listAdminUsers().find((u) => u.id === userId);
 
+  recordAdminAction({
+    actorUserId: session.user.id,
+    action: "set_admin",
+    targetUserId: userId,
+    ip: clientIp(request.headers),
+    userAgent: request.headers.get("user-agent"),
+    metadata: { isAdmin },
+  });
+
   return NextResponse.json({ user: updated ?? { id: userId, isAdmin } });
 }
 
@@ -63,6 +85,14 @@ export async function POST(request: Request) {
   try {
     const user = await createUserWithPassword({ email, password, name, isAdmin });
     const refreshed = listAdminUsers().find((u) => u.id === user.id) ?? user;
+    recordAdminAction({
+      actorUserId: session.user.id,
+      action: "create_user",
+      targetUserId: user.id,
+      ip: clientIp(request.headers),
+      userAgent: request.headers.get("user-agent"),
+      metadata: { isAdmin: Boolean(isAdmin), email: user.email },
+    });
     return NextResponse.json({ user: refreshed }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to create user";

@@ -8,6 +8,7 @@ import {
   Moon,
   Sun,
   User,
+  Shield,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTheme } from "next-themes";
@@ -125,6 +126,14 @@ export function UserMenu() {
             <span className="font-light">Profile</span>
           </Link>
         </DropdownMenuItem>
+        {user.isAdmin ? (
+          <DropdownMenuItem className="font-light" asChild>
+            <Link href="/admin">
+              <Shield className="size-4" strokeWidth={1.5} />
+              <span className="font-light">Admin</span>
+            </Link>
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuItem
           onClick={() =>
             setTheme(resolvedTheme === "dark" ? "light" : "dark")

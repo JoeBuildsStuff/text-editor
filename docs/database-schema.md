@@ -287,6 +287,85 @@ cp server/documents.db.bak server/documents.db
 
 **Note**: Also backup `server/documents/` directory (markdown files) and `server/uploads/` (user uploads).
 
+## Authentication Database (Admin Tables)
+
+The authentication database (`server/auth.sqlite`) is primarily managed by Better Auth, but also includes two additional tables for admin functionality: `admin_roles` and `admin_actions`. These tables are automatically created when the admin system is first used.
+
+### `admin_roles`
+
+Stores admin privileges for users.
+
+| Column | Type | Constraints | Description |
+|--------|------|------------|-------------|
+| `user_id` | TEXT | PRIMARY KEY | User ID (foreign key to Better Auth `user` table) |
+| `is_admin` | INTEGER | NOT NULL, DEFAULT 0 | Whether the user has admin privileges (0 or 1) |
+| `created_at` | INTEGER | NOT NULL | Unix timestamp (milliseconds) when the admin role was created |
+
+**Example Row**:
+```sql
+user_id: "user123"
+is_admin: 1
+created_at: 1704067200000
+```
+
+**Notes**:
+- `user_id` references the Better Auth `user` table
+- `is_admin` is stored as INTEGER (0 or 1) but used as boolean
+- The table uses `ON CONFLICT DO UPDATE` for upserts when setting admin status
+
+### `admin_actions`
+
+Stores audit log entries for all admin actions.
+
+| Column | Type | Constraints | Description |
+|--------|------|------------|-------------|
+| `id` | TEXT | PRIMARY KEY | UUID of the audit log entry |
+| `actor_user_id` | TEXT | NOT NULL | User ID of the admin who performed the action |
+| `action` | TEXT | NOT NULL | Type of action (e.g., "create_user", "set_admin", "revoke_sessions") |
+| `target_user_id` | TEXT | NULL | User ID of the target user (if applicable) |
+| `ip` | TEXT | NULL | IP address of the request (when available) |
+| `user_agent` | TEXT | NULL | User agent string from request headers |
+| `metadata` | TEXT | NULL | JSON-encoded metadata specific to the action |
+| `created_at` | INTEGER | NOT NULL | Unix timestamp (milliseconds) when the action occurred |
+
+**Indexes**:
+- `idx_admin_actions_actor_created_at` on `(actor_user_id, created_at DESC)` - Fast queries by actor
+- `idx_admin_actions_target_created_at` on `(target_user_id, created_at DESC)` - Fast queries by target
+
+**Action Types**:
+- `create_user` - Admin created a new user account
+- `set_admin` - Admin changed a user's admin status
+- `revoke_sessions` - Admin revoked user sessions
+- `set_password` - Admin set/reset a user's password
+- `delete_user` - Admin deleted a user account
+
+**Example Row**:
+```sql
+id: "550e8400-e29b-41d4-a716-446655440000"
+actor_user_id: "admin123"
+action: "set_admin"
+target_user_id: "user456"
+ip: "192.168.1.1"
+user_agent: "Mozilla/5.0..."
+metadata: '{"isAdmin": true}'
+created_at: 1704067200000
+```
+
+**Notes**:
+- `metadata` stores action-specific data as JSON (e.g., `{"isAdmin": true}` for set_admin, `{"deleted": 3}` for revoke_sessions)
+- IP and user agent are captured from request headers when available
+- Actions are ordered newest first in queries
+- All admin actions are automatically logged by admin API routes
+
+### Table Initialization
+
+These tables are automatically created by `ensureAdminTables()` when:
+- The first admin action is recorded
+- Admin user listing is queried
+- Admin role is set for a user
+
+The tables are created with `CREATE TABLE IF NOT EXISTS`, so initialization is idempotent and safe to call multiple times.
+
 ## Troubleshooting
 
 ### Database Locked

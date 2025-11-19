@@ -320,10 +320,46 @@ pnpm auth:migrate
 
 ## Admin Access
 
-An admin console lives at `/admin/users` (under the authenticated `(app)` layout). Only users flagged as admin can reach it. Admins can:
-- List users with session counts
-- Toggle admin access
-- Revoke sessions for a user
+The application includes a comprehensive admin system for user management and audit logging. The admin console is accessible at `/admin` (under the authenticated `(app)` layout). Only users with admin privileges can access these pages.
+
+### Admin Dashboard
+
+The admin dashboard at `/admin` provides quick access to:
+- **Users Management** (`/admin/users`) - Manage user accounts, admin roles, and sessions
+- **Audit Log** (`/admin/audit`) - View history of admin actions
+
+### User Management
+
+The admin users page (`/admin/users`) allows administrators to:
+
+- **List Users**: View all users with their email, name, admin status, active session count, and creation date
+- **Create Users**: Create new user accounts with email, password, optional name, and optional admin status
+- **Toggle Admin Status**: Promote or demote users to/from admin role
+- **Revoke Sessions**: Log out all sessions for a specific user (force logout)
+- **Set Passwords**: Reset user passwords (useful for password resets or account recovery)
+- **Delete Users**: Permanently delete user accounts with cascade cleanup:
+  - Removes user from authentication database
+  - Deletes all user sessions
+  - Deletes user's documents and folders from database
+  - Removes user's markdown files from `server/documents/<userId>/`
+  - Removes user's uploads from `server/uploads/<userId>/`
+  - Removes admin role entry if present
+
+### Audit Log
+
+The admin audit log (`/admin/audit`) provides a complete history of all admin actions:
+
+- **Action Tracking**: Every admin action is automatically logged with:
+  - Actor (admin who performed the action)
+  - Target user (if applicable)
+  - Action type (create_user, set_admin, revoke_sessions, set_password, delete_user)
+  - IP address and user agent (when available)
+  - Metadata specific to each action type
+  - Timestamp
+  
+- **Pagination**: Audit log supports pagination with configurable page size (default 50, max 200)
+- **Chronological Order**: Actions are displayed newest first
+- **Detailed Metadata**: Each action includes relevant metadata (e.g., whether admin access was granted, number of sessions revoked)
 
 ### Promoting the First Admin
 
@@ -334,6 +370,24 @@ pnpm tsx scripts/promote-admin.ts you@example.com
 ```
 
 The script writes to `server/auth.sqlite` (or `AUTH_SQLITE_PATH` if set) and creates the `admin_roles` table if it does not exist.
+
+### Admin Action Logging
+
+All admin actions are automatically recorded in the `admin_actions` table:
+
+- **Automatic Logging**: Admin API routes automatically log actions via `recordAdminAction()`
+- **IP and User Agent**: Captured from request headers when available
+- **Metadata Storage**: Action-specific metadata is stored as JSON
+- **Audit Trail**: Provides complete audit trail for compliance and debugging
+
+### Database Tables
+
+The admin system uses two additional tables in `server/auth.sqlite`:
+
+- **`admin_roles`**: Stores admin status for each user (`user_id`, `is_admin`, `created_at`)
+- **`admin_actions`**: Stores audit log entries (`id`, `actor_user_id`, `action`, `target_user_id`, `ip`, `user_agent`, `metadata`, `created_at`)
+
+These tables are automatically created when the admin system is first used. See [Database Schema](./database-schema.md) for detailed table schemas.
 
 ## Troubleshooting
 

@@ -2,18 +2,12 @@ import { headers } from "next/headers";
 
 import { auth } from "../auth";
 import { getAuthDb } from "./database";
+import { ensureAdminTables } from "./admin";
 import type { AuthSession } from "./types";
 
 function getIsAdmin(userId: string): boolean {
   const db = getAuthDb();
-  // Ensure table exists even if the DB connection was opened before the table was introduced
-  db.exec(
-    `CREATE TABLE IF NOT EXISTS admin_roles (
-      user_id TEXT PRIMARY KEY,
-      is_admin INTEGER NOT NULL DEFAULT 0,
-      created_at INTEGER NOT NULL
-    );`
-  );
+  ensureAdminTables(db);
   const row = db
     .prepare(`SELECT is_admin FROM admin_roles WHERE user_id = ?`)
     .get(userId) as { is_admin: number } | undefined;

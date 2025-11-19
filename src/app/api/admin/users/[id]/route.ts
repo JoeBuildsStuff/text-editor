@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { deleteUserCascade } from "@/lib/auth/admin";
+import { deleteUserCascade, recordAdminAction } from "@/lib/auth/admin";
 import { getSessionFromHeaders } from "@/lib/auth/session";
 
 function unauthorized() {
@@ -9,6 +9,14 @@ function unauthorized() {
 
 function forbidden() {
   return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+}
+
+function clientIp(headers: Headers) {
+  return (
+    headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    headers.get("x-real-ip") ??
+    null
+  );
 }
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -22,5 +30,13 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   }
 
   const result = deleteUserCascade(id);
+  recordAdminAction({
+    actorUserId: session.user.id,
+    action: "delete_user",
+    targetUserId: id,
+    ip: clientIp(request.headers),
+    userAgent: request.headers.get("user-agent"),
+    metadata: result,
+  });
   return NextResponse.json({ result });
 }

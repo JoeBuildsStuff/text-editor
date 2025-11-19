@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { setUserPassword } from "@/lib/auth/admin";
+import { recordAdminAction, setUserPassword } from "@/lib/auth/admin";
 import { getSessionFromHeaders } from "@/lib/auth/session";
 
 function unauthorized() {
@@ -9,6 +9,14 @@ function unauthorized() {
 
 function forbidden() {
   return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+}
+
+function clientIp(headers: Headers) {
+  return (
+    headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    headers.get("x-real-ip") ??
+    null
+  );
 }
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -34,6 +42,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   try {
     await setUserPassword(id, body.password);
+    recordAdminAction({
+      actorUserId: session.user.id,
+      action: "set_password",
+      targetUserId: id,
+      ip: clientIp(request.headers),
+      userAgent: request.headers.get("user-agent"),
+      metadata: { viaAdmin: true },
+    });
     return NextResponse.json({ ok: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to set password";

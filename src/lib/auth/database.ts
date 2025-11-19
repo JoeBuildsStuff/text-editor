@@ -46,6 +46,20 @@ function createDatabase(): DatabaseType {
       is_admin INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL
     );
+
+    -- Admin audit log for privileged actions
+    CREATE TABLE IF NOT EXISTS admin_actions (
+      id TEXT PRIMARY KEY,
+      actor_user_id TEXT NOT NULL,
+      action TEXT NOT NULL,
+      target_user_id TEXT,
+      ip TEXT,
+      user_agent TEXT,
+      metadata TEXT,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_admin_actions_actor_created_at ON admin_actions(actor_user_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_admin_actions_target_created_at ON admin_actions(target_user_id, created_at DESC);
   `);
   return db;
 }

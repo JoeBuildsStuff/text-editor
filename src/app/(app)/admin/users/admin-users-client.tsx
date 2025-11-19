@@ -377,7 +377,8 @@ export function AdminUsersClient({ initialUsers }: Props) {
                         <span>{settingPassword(user.id) ? "Saving..." : "Set password"}</span>
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        className="text-destructive focus:text-destructive flex items-center"
+                      variant="destructive"
+                        // className="text-destructive focus:text-destructive flex items-center"
                         disabled={deletingUser(user.id)}
                         onClick={() => setDeleteTarget({ id: user.id, email: user.email })}
                       >

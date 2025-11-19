@@ -246,6 +246,27 @@ The build process uses custom webpack configuration to handle native modules:
 - Database queries filtered by `user_id`
 - File system paths scoped to user ID
 - No cross-user data access
+- Admin role-based access control for privileged operations
+
+### Admin System
+The application includes a comprehensive admin system for user management and audit logging:
+
+- **Admin Dashboard**: Centralized admin interface at `/admin` with access to user management and audit logs
+- **User Management**: Full CRUD operations for user accounts:
+  - List all users with admin status and session counts
+  - Create new user accounts with optional admin privileges
+  - Toggle admin status for existing users
+  - Revoke user sessions (force logout)
+  - Reset user passwords
+  - Delete users with cascade cleanup (removes documents, uploads, sessions, and database records)
+- **Audit Logging**: Automatic logging of all admin actions:
+  - All admin operations are recorded in `admin_actions` table
+  - Captures actor, target user, action type, IP address, user agent, and metadata
+  - Provides complete audit trail for compliance and debugging
+- **Admin Tables**: Additional tables in `auth.sqlite`:
+  - `admin_roles`: Stores admin privileges per user
+  - `admin_actions`: Stores audit log entries with full context
+- **Access Control**: Admin routes require both authentication and admin role verification
 
 ### Input Validation
 - **Zod schemas** for all API inputs
