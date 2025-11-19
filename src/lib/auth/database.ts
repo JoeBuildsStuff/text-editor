@@ -39,6 +39,13 @@ function createDatabase(): DatabaseType {
 
     CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
     CREATE INDEX IF NOT EXISTS idx_sessions_token_hash ON sessions(token_hash);
+
+    -- Admin roles are tracked separately so we don't disturb the Better Auth schema
+    CREATE TABLE IF NOT EXISTS admin_roles (
+      user_id TEXT PRIMARY KEY,
+      is_admin INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    );
   `);
   return db;
 }

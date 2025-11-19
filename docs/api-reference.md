@@ -560,6 +560,58 @@ Common error messages:
 - `"File too large"` - File exceeds size limit
 - `"Invalid file type"` - File type not allowed
 
+## Admin Endpoints
+
+> These routes require an admin session. Non-admins receive `403 Forbidden`; unauthenticated requests receive `401 Unauthorized`.
+
+### `GET /api/admin/users`
+
+List users with admin flag and session counts.
+
+**Response**:
+```json
+{
+  "users": [
+    {
+      "id": "user123",
+      "email": "user@example.com",
+      "name": "User",
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "isAdmin": true,
+      "sessionCount": 2
+    }
+  ]
+}
+```
+
+### `PATCH /api/admin/users`
+
+Promote or demote a user.
+
+**Request Body**:
+```json
+{ "userId": "user123", "isAdmin": true }
+```
+
+**Response**:
+```json
+{ "user": { "id": "user123", "isAdmin": true } }
+```
+
+### `DELETE /api/admin/users/:id/sessions`
+
+Revoke sessions for a user (all sessions by default, or a single session when `sessionId` is provided).
+
+**Request Body (optional)**:
+```json
+{ "sessionId": "session-uuid" }
+```
+
+**Response**:
+```json
+{ "deleted": 3 }
+```
+
 ## Rate Limiting
 
 Currently, there is no rate limiting implemented. Consider adding rate limiting for production deployments.

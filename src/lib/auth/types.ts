@@ -3,6 +3,7 @@ export type AuthUser = {
   email: string;
   name: string | null;
   createdAt: string;
+  isAdmin: boolean;
 };
 
 export type AuthSession = {

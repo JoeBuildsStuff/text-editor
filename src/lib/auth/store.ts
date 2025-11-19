@@ -19,6 +19,7 @@ function mapUser(row: {
     email: row.email,
     name: row.name,
     createdAt: new Date(row.created_at).toISOString(),
+    isAdmin: false,
   };
 }
 
@@ -53,6 +54,7 @@ export function createUser({
     email: normalizedEmail,
     name: name.trim(),
     createdAt: new Date(createdAt).toISOString(),
+    isAdmin: false,
   };
 }
 
@@ -183,6 +185,7 @@ export function getSessionByToken(token: string): AuthSession | null {
       email: row.email,
       name: row.name,
       createdAt: new Date(row.user_created_at).toISOString(),
+      isAdmin: false,
     },
     expiresAt: new Date(row.expires_at).toISOString(),
     rememberMe: Boolean(row.remember_me),

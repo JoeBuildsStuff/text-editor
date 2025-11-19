@@ -318,6 +318,23 @@ pnpm auth:migrate
 
 **Note**: This will delete all users and sessions. Use only in development.
 
+## Admin Access
+
+An admin console lives at `/admin/users` (under the authenticated `(app)` layout). Only users flagged as admin can reach it. Admins can:
+- List users with session counts
+- Toggle admin access
+- Revoke sessions for a user
+
+### Promoting the First Admin
+
+Since admin-only routes require an admin session, bootstrap the first admin via the helper script:
+
+```bash
+pnpm tsx scripts/promote-admin.ts you@example.com
+```
+
+The script writes to `server/auth.sqlite` (or `AUTH_SQLITE_PATH` if set) and creates the `admin_roles` table if it does not exist.
+
 ## Troubleshooting
 
 ### "Unauthorized" Errors
@@ -347,4 +364,3 @@ pnpm auth:migrate
 - [API Reference](./api-reference.md) - API endpoints
 - [Database Schema](./database-schema.md) - Database structure
 - [Better Auth Documentation](https://www.better-auth.com/docs) - Official docs
-

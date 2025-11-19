@@ -37,6 +37,7 @@ This is a markdown-based text editor built with Next.js and Tiptap. It provides 
 ### For DevOps
 - [Deployment Guide](./deployment.md) - Production deployment and CI/CD
 - [File Storage System](./file-storage.md) - Storage configuration and management
+- Admin console lives at `/admin/users` (promote first admin via `pnpm tsx scripts/promote-admin.ts you@example.com`)
 
 ## 🔑 Key Concepts
 
