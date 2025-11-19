@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { listAdminUsers, setUserAdmin } from "@/lib/auth/admin";
+import { createUserWithPassword, listAdminUsers, setUserAdmin } from "@/lib/auth/admin";
 import { getSessionFromHeaders } from "@/lib/auth/session";
 
 function unauthorized() {
@@ -41,4 +41,32 @@ export async function PATCH(request: Request) {
   const updated = listAdminUsers().find((u) => u.id === userId);
 
   return NextResponse.json({ user: updated ?? { id: userId, isAdmin } });
+}
+
+export async function POST(request: Request) {
+  const session = await getSessionFromHeaders(request.headers);
+  if (!session) return unauthorized();
+  if (!session.user.isAdmin) return forbidden();
+
+  let body: { email?: string; password?: string; name?: string; isAdmin?: boolean } = {};
+  try {
+    body = (await request.json()) as typeof body;
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const { email, password, name, isAdmin } = body;
+  if (!email || !password) {
+    return NextResponse.json({ error: "email and password are required" }, { status: 400 });
+  }
+
+  try {
+    const user = await createUserWithPassword({ email, password, name, isAdmin });
+    const refreshed = listAdminUsers().find((u) => u.id === user.id) ?? user;
+    return NextResponse.json({ user: refreshed }, { status: 201 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to create user";
+    const status = message.toLowerCase().includes("exists") ? 409 : 400;
+    return NextResponse.json({ error: message }, { status });
+  }
 }

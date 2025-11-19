@@ -598,6 +598,33 @@ Promote or demote a user.
 { "user": { "id": "user123", "isAdmin": true } }
 ```
 
+### `POST /api/admin/users`
+
+Create a user with a password.
+
+**Request Body**:
+```json
+{ "email": "user@example.com", "password": "tempPass123", "name": "User", "isAdmin": false }
+```
+
+**Response**:
+```json
+{
+  "user": {
+    "id": "user123",
+    "email": "user@example.com",
+    "name": "User",
+    "createdAt": "2024-01-01T00:00:00.000Z",
+    "isAdmin": false,
+    "sessionCount": 0
+  }
+}
+```
+
+**Notes**:
+- Returns `201 Created` on success.
+- Returns `409 Conflict` if the email already exists.
+
 ### `DELETE /api/admin/users/:id/sessions`
 
 Revoke sessions for a user (all sessions by default, or a single session when `sessionId` is provided).
@@ -611,6 +638,24 @@ Revoke sessions for a user (all sessions by default, or a single session when `s
 ```json
 { "deleted": 3 }
 ```
+
+### `POST /api/admin/users/:id/password`
+
+Set a new password for a user (admin-only).
+
+**Request Body**:
+```json
+{ "password": "NewSecurePassword" }
+```
+
+**Response**:
+```json
+{ "ok": true }
+```
+
+**Notes**:
+- Resets/creates the credential password for the user.
+- Returns `400 Bad Request` if `password` is missing or empty.
 
 ### `DELETE /api/admin/users/:id`
 

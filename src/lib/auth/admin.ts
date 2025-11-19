@@ -6,6 +6,8 @@ import { getAuthDb } from "./database";
 import { getDatabase as getDocsDb } from "../db";
 import { MARKDOWN_DIR } from "../markdown-files";
 import { sanitizeUserSegment } from "../user-paths";
+import { hashPassword } from "better-auth/crypto";
+import { randomUUID } from "node:crypto";
 
 function getDb(): DatabaseType {
   return getAuthDb();
@@ -30,6 +32,13 @@ export type DeleteUserCascadeResult = {
   deletedFolders: number;
   deletedUploadsDir: boolean;
   deletedDocumentsDir: boolean;
+};
+
+export type AdminCreateUserInput = {
+  email: string;
+  password: string;
+  name?: string | null;
+  isAdmin?: boolean;
 };
 
 export function listAdminUsers(): AdminUserSummary[] {
@@ -146,4 +155,97 @@ function awaitCleanup(targetDir: string) {
   rm(targetDir, { force: true, recursive: true }).catch(() => {
     // Ignore missing directories or cleanup failures
   });
+}
+
+export async function createUserWithPassword(input: AdminCreateUserInput) {
+  const { email, password, name = null, isAdmin = false } = input;
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!normalizedEmail || !password.trim()) {
+    throw new Error("Email and password are required");
+  }
+
+  const authDb = getDb();
+  // ensure admin_roles exists
+  authDb.exec(
+    `CREATE TABLE IF NOT EXISTS admin_roles (
+      user_id TEXT PRIMARY KEY,
+      is_admin INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    );`
+  );
+
+  const existing = authDb
+    .prepare(`SELECT id FROM user WHERE lower(email) = ? LIMIT 1`)
+    .get(normalizedEmail) as { id: string } | undefined;
+  if (existing) {
+    throw new Error("Email already exists");
+  }
+
+  const userId = randomUUID();
+  const now = new Date().toISOString();
+  const passwordHash = await hashPassword(password);
+  const accountId = userId;
+
+  const tx = authDb.transaction(() => {
+    authDb
+      .prepare(
+        `INSERT INTO user (id, name, email, emailVerified, image, createdAt, updatedAt)
+         VALUES (?, ?, ?, 0, NULL, ?, ?)`
+      )
+      .run(userId, name ?? null, normalizedEmail, now, now);
+
+    authDb
+      .prepare(
+        `INSERT INTO account (id, accountId, providerId, userId, password, createdAt, updatedAt)
+         VALUES (?, ?, 'credential', ?, ?, ?, ?)`
+      )
+      .run(randomUUID(), accountId, userId, passwordHash, now, now);
+
+    if (isAdmin) {
+      authDb
+        .prepare(
+          `INSERT INTO admin_roles (user_id, is_admin, created_at)
+           VALUES (?, 1, strftime('%s','now')*1000)
+           ON CONFLICT(user_id) DO UPDATE SET is_admin = 1`
+        )
+        .run(userId);
+    }
+  });
+
+  tx();
+
+  return {
+    id: userId,
+    email: normalizedEmail,
+    name,
+    isAdmin,
+    createdAt: now,
+    sessionCount: 0,
+  } satisfies AdminUserSummary;
+}
+
+export async function setUserPassword(userId: string, newPassword: string) {
+  if (!newPassword.trim()) {
+    throw new Error("Password is required");
+  }
+  const authDb = getDb();
+  const hash = await hashPassword(newPassword);
+  const now = new Date().toISOString();
+
+  const existingAccount = authDb
+    .prepare(`SELECT id FROM account WHERE userId = ? AND providerId = 'credential' LIMIT 1`)
+    .get(userId) as { id: string } | undefined;
+
+  if (existingAccount) {
+    authDb
+      .prepare(`UPDATE account SET password = ?, updatedAt = ? WHERE id = ?`)
+      .run(hash, now, existingAccount.id);
+  } else {
+    authDb
+      .prepare(
+        `INSERT INTO account (id, accountId, providerId, userId, password, createdAt, updatedAt)
+         VALUES (?, ?, 'credential', ?, ?, ?, ?)`
+      )
+      .run(randomUUID(), userId, userId, hash, now, now);
+  }
 }
