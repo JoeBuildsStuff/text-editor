@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -14,6 +15,7 @@ import { toast } from "sonner";
 import { useTheme } from "next-themes";
 
 import { authClient } from "@/lib/auth-client";
+import type { AuthSession } from "@/lib/auth/types";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,6 +34,37 @@ export function UserMenu() {
   const router = useRouter();
   const { setTheme, resolvedTheme } = useTheme();
   const isMobile = useIsMobile();
+  const [sessionWithAdmin, setSessionWithAdmin] = useState<AuthSession | null>(null);
+  
+  // Fetch session with admin status from our API
+  useEffect(() => {
+    const userId = sessionState.data?.user?.id;
+    
+    if (!userId) {
+      // Use setTimeout to avoid synchronous setState in effect
+      const timeoutId = setTimeout(() => {
+        setSessionWithAdmin(null);
+      }, 0);
+      return () => clearTimeout(timeoutId);
+    }
+    
+    let cancelled = false;
+    
+    fetch("/api/session")
+      .then((res) => res.json())
+      .then((data: { session: AuthSession | null }) => {
+        if (!cancelled) {
+          setSessionWithAdmin(data.session);
+        }
+      })
+      .catch(() => {
+        // If API fails, don't update state (will remain null or previous value)
+      });
+    
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionState.data?.user?.id]);
   
   const handleSignOut = async () => {
     try {
@@ -126,7 +159,7 @@ export function UserMenu() {
             <span className="font-light">Profile</span>
           </Link>
         </DropdownMenuItem>
-        {user.isAdmin ? (
+        {sessionWithAdmin?.user.isAdmin ? (
           <DropdownMenuItem className="font-light" asChild>
             <Link href="/admin">
               <Shield className="size-4" strokeWidth={1.5} />
