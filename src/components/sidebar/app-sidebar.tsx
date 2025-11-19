@@ -107,6 +107,13 @@ type MarkdownFolder = {
 
 const DOCUMENTS_ROOT_ID = "documents-root"
 
+function buildDocumentsPath(slug: string) {
+  return `/documents/${slug
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/")}`
+}
+
 interface SidebarTreeElement extends TreeViewElement {
   children?: SidebarTreeElement[]
   kind: "folder" | "document"
@@ -798,11 +805,7 @@ export function AppSidebar() {
 
   const navigateToSlug = useCallback(
     (slug: string) => {
-      const encodedPath = slug
-        .split("/")
-        .map((segment) => encodeURIComponent(segment))
-        .join("/")
-      router.push(`/documents/${encodedPath}`)
+      router.push(buildDocumentsPath(slug))
     },
     [router]
   )
@@ -966,63 +969,175 @@ export function AppSidebar() {
 
   const deleteDocumentById = useCallback(
     async (documentId: string, slug?: string) => {
-      const response = await fetch("/api/markdown", {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ id: documentId }),
+      let removedDocument: MarkdownDocument | undefined
+      let removedIndex = -1
+      let didRemove = false
+
+      setDocuments((prev) => {
+        const index = prev.findIndex((doc) => doc.id === documentId)
+        if (index === -1) {
+          return prev
+        }
+        removedIndex = index
+        removedDocument = prev[index]
+        didRemove = true
+        const next = [...prev]
+        next.splice(index, 1)
+        return next
       })
 
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}))
-        throw new Error(body.error ?? "Failed to delete document")
-      }
+      const resolvedSlug = slug ?? removedDocument?.slug
+      const shouldResetSelection = Boolean(didRemove && resolvedSlug && resolvedSlug === selectedSlug)
+      const slugToRestore = shouldResetSelection ? resolvedSlug : undefined
 
-      const data = await response.json()
-      const document = data.document as { slug?: string; title?: string } | null
-
-      await loadDocuments({ silent: true })
-
-      const deletedSlug = document?.slug ?? slug
-      if (deletedSlug && deletedSlug === selectedSlug) {
+      if (shouldResetSelection) {
         router.replace("/documents")
       }
 
-      const label = document?.title ?? "Document"
-      toast.success(`${label} deleted`)
+      const restoreDocument = () => {
+        if (!didRemove || !removedDocument) return
+        setDocuments((prev) => {
+          if (prev.some((doc) => doc.id === documentId)) {
+            return prev
+          }
+          const next = [...prev]
+          const insertIndex =
+            removedIndex >= 0 && removedIndex <= next.length ? removedIndex : next.length
+          next.splice(insertIndex, 0, removedDocument as MarkdownDocument)
+          return next
+        })
+      }
+
+      try {
+        const response = await fetch("/api/markdown", {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ id: documentId }),
+        })
+
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}))
+          throw new Error(body.error ?? "Failed to delete document")
+        }
+
+        await response.json().catch(() => ({}))
+        await loadDocuments({ silent: true })
+      } catch (error) {
+        restoreDocument()
+        if (slugToRestore) {
+          router.replace(buildDocumentsPath(slugToRestore))
+        }
+        throw error
+      }
     },
     [loadDocuments, router, selectedSlug]
   )
 
   const deleteFolderAtPath = useCallback(
     async (folderPath: string) => {
-      const response = await fetch("/api/markdown", {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ type: "folder", folderPath }),
+      const folderPrefix = folderPath ? `${folderPath}/` : ""
+      const removedFolders: { folder: MarkdownFolder; index: number }[] = []
+      const removedDocuments: { document: MarkdownDocument; index: number }[] = []
+
+      setFolders((prev) => {
+        let changed = false
+        const next = prev.filter((folder, index) => {
+          const isTarget = folder.folderPath === folderPath
+          const isNested = folderPrefix ? folder.folderPath.startsWith(folderPrefix) : false
+          if (isTarget || isNested) {
+            removedFolders.push({ folder, index })
+            changed = true
+            return false
+          }
+          return true
+        })
+        return changed ? next : prev
       })
 
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}))
-        throw new Error(body.error ?? "Failed to delete folder")
-      }
+      setDocuments((prev) => {
+        let changed = false
+        const next = prev.filter((doc, index) => {
+          const docPath = doc.documentPath ?? ""
+          const shouldRemove =
+            docPath === folderPath || (folderPrefix ? docPath.startsWith(folderPrefix) : false)
+          if (shouldRemove) {
+            removedDocuments.push({ document: doc, index })
+            changed = true
+            return false
+          }
+          return true
+        })
+        return changed ? next : prev
+      })
 
-      const result = await loadDocuments({ silent: true })
-      closeFolderPath(folderPath)
-
-      if (
+      const removedSelectedDoc = Boolean(
         selectedSlug &&
-        result &&
-        !result.documents.some((doc: MarkdownDocument) => doc.slug === selectedSlug)
-      ) {
+          removedDocuments.some(({ document }) => document.slug === selectedSlug)
+      )
+      const slugToRestore = removedSelectedDoc ? selectedSlug : undefined
+
+      if (removedSelectedDoc) {
         router.replace("/documents")
       }
 
-      const folderName = folderPath.split("/").pop() ?? folderPath
-      toast.success(`Deleted folder "${folderName}"`)
+      const restoreState = () => {
+        if (removedFolders.length) {
+          const foldersToRestore = [...removedFolders].sort((a, b) => a.index - b.index)
+          setFolders((prev) => {
+            const next = [...prev]
+            foldersToRestore.forEach(({ folder, index }) => {
+              if (next.some((item) => item.id === folder.id)) {
+                return
+              }
+              const insertIndex = index >= 0 && index <= next.length ? index : next.length
+              next.splice(insertIndex, 0, folder)
+            })
+            return next
+          })
+        }
+
+        if (removedDocuments.length) {
+          const documentsToRestore = [...removedDocuments].sort((a, b) => a.index - b.index)
+          setDocuments((prev) => {
+            const next = [...prev]
+            documentsToRestore.forEach(({ document, index }) => {
+              if (next.some((item) => item.id === document.id)) {
+                return
+              }
+              const insertIndex = index >= 0 && index <= next.length ? index : next.length
+              next.splice(insertIndex, 0, document)
+            })
+            return next
+          })
+        }
+      }
+
+      try {
+        const response = await fetch("/api/markdown", {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ type: "folder", folderPath }),
+        })
+
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}))
+          throw new Error(body.error ?? "Failed to delete folder")
+        }
+
+        await response.json().catch(() => ({}))
+        await loadDocuments({ silent: true })
+        closeFolderPath(folderPath)
+      } catch (error) {
+        restoreState()
+        if (slugToRestore) {
+          router.replace(buildDocumentsPath(slugToRestore))
+        }
+        throw error
+      }
     },
     [loadDocuments, closeFolderPath, selectedSlug, router]
   )
