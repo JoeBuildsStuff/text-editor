@@ -7,6 +7,16 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Table,
   TableBody,
   TableCaption,
@@ -25,6 +35,7 @@ export function AdminUsersClient({ initialUsers }: Props) {
   const [users, setUsers] = useState<AdminUserSummary[]>(initialUsers);
   const [isRefreshing, startRefresh] = useTransition();
   const [inFlight, setInFlight] = useState<Record<string, boolean>>({});
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; email: string } | null>(null);
 
   const refresh = () => {
     startRefresh(async () => {
@@ -103,8 +114,37 @@ export function AdminUsersClient({ initialUsers }: Props) {
       });
   };
 
+  const confirmDeleteUser = () => {
+    if (!deleteTarget) return;
+    const { id: userId } = deleteTarget;
+    setInFlight((prev) => ({ ...prev, [`delete-${userId}`]: true }));
+    fetch(`/api/admin/users/${userId}`, { method: "DELETE" })
+      .then(async (res) => {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data?.error || "Failed to delete user");
+        }
+        const data = (await res.json()) as { result?: { deletedUser?: boolean } };
+        setUsers((prev) => prev.filter((u) => u.id !== userId));
+        toast.success(data?.result?.deletedUser ? "User deleted" : "User removed");
+      })
+      .catch((error) => {
+        console.error(error);
+        toast.error(error.message || "Failed to delete user");
+      })
+      .finally(() => {
+        setDeleteTarget(null);
+        setInFlight((prev) => {
+          const copy = { ...prev };
+          delete copy[`delete-${userId}`];
+          return copy;
+        });
+      });
+  };
+
   const loading = (userId: string) => Boolean(inFlight[userId]);
   const sessionsLoading = (userId: string) => Boolean(inFlight[`sessions-${userId}`]);
+  const deletingUser = (userId: string) => Boolean(inFlight[`delete-${userId}`]);
 
   return (
     <Card>
@@ -163,6 +203,39 @@ export function AdminUsersClient({ initialUsers }: Props) {
                   >
                     {sessionsLoading(user.id) ? "Revoking..." : "Revoke sessions"}
                   </Button>
+                  <AlertDialog
+                    open={Boolean(deleteTarget && deleteTarget.id === user.id)}
+                    onOpenChange={(open) => {
+                      if (!open) setDeleteTarget(null);
+                    }}
+                  >
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="ml-2"
+                      disabled={deletingUser(user.id)}
+                      onClick={() => setDeleteTarget({ id: user.id, email: user.email })}
+                    >
+                      {deletingUser(user.id) ? "Deleting..." : "Delete"}
+                    </Button>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Delete user?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This will remove {user.email}&apos;s sessions, admin role, documents, and uploads. This action is destructive and cannot be undone.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => setDeleteTarget(null)}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={confirmDeleteUser}
+                          disabled={deletingUser(user.id)}
+                        >
+                          {deletingUser(user.id) ? "Deleting..." : "Delete"}
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </TableCell>
               </TableRow>
             ))}

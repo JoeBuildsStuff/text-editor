@@ -612,6 +612,29 @@ Revoke sessions for a user (all sessions by default, or a single session when `s
 { "deleted": 3 }
 ```
 
+### `DELETE /api/admin/users/:id`
+
+Delete a user and cascade cleanup.
+
+**Behavior**:
+- Deletes the auth user, sessions, accounts, admin role entry
+- Deletes document/folder rows for that user
+- Deletes their markdown files under `server/documents/<userId>/`
+- Deletes their uploads under `server/uploads/<userId>/`
+
+**Response**:
+```json
+{
+  "result": {
+    "userId": "user123",
+    "deletedUser": true,
+    "deletedSessions": 3,
+    "deletedDocuments": 5,
+    "deletedFolders": 2
+  }
+}
+```
+
 ## Rate Limiting
 
 Currently, there is no rate limiting implemented. Consider adding rate limiting for production deployments.
