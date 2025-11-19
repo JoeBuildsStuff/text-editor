@@ -30,7 +30,15 @@ import {
   useDroppable,
   useSensor,
   useSensors,
+  closestCenter,
+  useDndContext,
 } from "@dnd-kit/core"
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import {
   DropdownMenu,
@@ -85,6 +93,7 @@ type MarkdownDocument = {
   title: string
   documentPath: string
   slug: string
+  sortOrder?: number
 }
 
 type MarkdownFolder = {
@@ -92,6 +101,7 @@ type MarkdownFolder = {
   folderPath: string
   createdAt: string
   updatedAt: string
+  sortOrder?: number
 }
 
 const DOCUMENTS_ROOT_ID = "documents-root"
@@ -102,6 +112,27 @@ interface SidebarTreeElement extends TreeViewElement {
   folderPath?: string
   documentId?: string
   documentPath?: string
+  sortOrder?: number
+}
+
+function sortTree(elements: SidebarTreeElement[]) {
+  elements.sort((a, b) => {
+    // If sortOrder is defined for both, use it
+    if (typeof a.sortOrder === 'number' && typeof b.sortOrder === 'number') {
+      if (a.sortOrder !== b.sortOrder) {
+        return a.sortOrder - b.sortOrder
+      }
+    }
+    // If one has sortOrder and other doesn't (shouldn't happen with DB default), prioritize one?
+    // For now, fallback to name
+    return a.name.localeCompare(b.name)
+  })
+  elements.forEach(element => {
+    if (element.children) {
+      sortTree(element.children)
+    }
+  })
+  return elements
 }
 
 function buildDocumentsTree(
@@ -142,9 +173,9 @@ function buildDocumentsTree(
           name: segment,
           // Must remain true so that we can select the node
           isSelectable: true,
-          children: [],
           kind: "folder",
           folderPath,
+          sortOrder: 0, // Intermediate folders might not have sortOrder from DB immediately if not in folders array
         } satisfies SidebarTreeElement
         children.push(folderNode)
       } else {
@@ -160,7 +191,9 @@ function buildDocumentsTree(
 
   folders.forEach((folder) => {
     const segments = folder.folderPath.split("/").filter(Boolean)
-    ensureFolderNode(segments)
+    const node = ensureFolderNode(segments)
+    // Update the leaf node with actual DB data including sortOrder
+    node.sortOrder = folder.sortOrder
   })
 
   files.forEach((file) => {
@@ -181,12 +214,14 @@ function buildDocumentsTree(
       kind: "document",
       documentId: file.id,
       documentPath: file.documentPath,
+      sortOrder: file.sortOrder,
     }
 
     children.push(documentNode)
   })
 
-  return root.children ?? []
+  const result = root.children ?? []
+  return sortTree(result)
 }
 
 const ROOT_DROPPABLE_ID = `${DOCUMENTS_ROOT_ID}-root` as const
@@ -213,22 +248,47 @@ function SidebarTreeNodes({
   elements: SidebarTreeElement[]
   options: TreeRenderOptions
 }) {
+  const { active } = useDndContext()
   if (!elements.length) return null
-  return elements.map((element) =>
-    element.kind === "folder" ? (
-      <FolderTreeNode key={element.id} element={element} options={options} />
-    ) : (
-      <DocumentTreeNode key={element.id} element={element} options={options} />
-    )
+
+  const items = useMemo(() => elements.map((e) => e.id), [elements])
+  const activeIndex = elements.findIndex((e) => e.id === active?.id)
+
+  return (
+    <SortableContext items={items} strategy={verticalListSortingStrategy}>
+      {elements.map((element, index) =>
+        element.kind === "folder" ? (
+          <FolderTreeNode
+            key={element.id}
+            element={element}
+            options={options}
+            index={index}
+            activeIndex={activeIndex}
+          />
+        ) : (
+          <DocumentTreeNode
+            key={element.id}
+            element={element}
+            options={options}
+            index={index}
+            activeIndex={activeIndex}
+          />
+        )
+      )}
+    </SortableContext>
   )
 }
 
 function FolderTreeNode({
   element,
   options,
+  index,
+  activeIndex,
 }: {
   element: SidebarTreeElement
   options: TreeRenderOptions
+  index: number
+  activeIndex: number
 }) {
   const isOpen = options.openFolders.has(element.id)
   const folderPath =
@@ -242,53 +302,118 @@ function FolderTreeNode({
     },
   })
 
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setSortableRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: element.id,
+    data: {
+      type: "folder",
+      folderPath,
+      sortOrder: element.sortOrder,
+      label: element.name,
+    },
+  })
+
+  const { active, over } = useDndContext()
+  const isOverContext = over?.id === element.id
+  const isDraggingSelf = active?.id === element.id
+
+  let dropPosition: "top" | "bottom" | "middle" | null = null
+
+  if (isOverContext && !isDraggingSelf && active && over) {
+    const activeRect = active.rect.current.translated
+    const overRect = over.rect
+
+    if (activeRect && overRect) {
+      const activeCenterY = activeRect.top + activeRect.height / 2
+      const overTop = overRect.top
+      const overHeight = overRect.height
+      const relativeY = (activeCenterY - overTop) / overHeight
+
+      if (relativeY < 0.25) {
+        dropPosition = "top"
+      } else if (relativeY > 0.75) {
+        dropPosition = "bottom"
+      } else {
+        dropPosition = "middle"
+      }
+    } else {
+      // Fallback if rects aren't available (shouldn't happen often during drag)
+      if (activeIndex === -1) dropPosition = "middle"
+      else if (activeIndex < index) dropPosition = "bottom"
+      else dropPosition = "top"
+    }
+  }
+
+  const style = {
+    // Only apply transform if dragging this specific item to keep others fixed
+    transform: undefined,
+    transition,
+  }
+
   return (
     <ContextMenu>
       <div
-        ref={setNodeRef}
-        className={cn("rounded-sm", isOver && "bg-muted/40")}
+        ref={setSortableRef}
+        style={style}
+        className={cn("rounded-sm relative", dropPosition === "middle" && "bg-muted/40", isDragging && "opacity-25")}
       >
-        <Collapsible
-          open={isOpen}
-          onOpenChange={() => options.onToggleFolder(element.id)}
-          className="group/collapsible"
-        >
-          <SidebarMenuItem>
-            <ContextMenuTrigger asChild>
-              <CollapsibleTrigger asChild>
-                <SidebarMenuButton
-                  className={cn(
-                    options.isNested && "mr-0!",
-                    isOver && "bg-muted/60"
-                  )}
-                >
-                  {isOpen ? (
-                    <FolderOpenIcon className="w-3.5 h-3.5 mr-2 flex-none text-muted-foreground" />
-                  ) : (
-                    <FolderIcon className="w-3.5 h-3.5 mr-2 flex-none text-muted-foreground" />
-                  )}
-                  <span className="font-normal">{element.name}</span>
-                  <ChevronRight
+        {dropPosition === "top" && (
+          <div className="absolute top-0 left-0 right-0 h-0.5 bg-primary z-10" />
+        )}
+        {dropPosition === "bottom" && (
+          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary z-10" />
+        )}
+        <div ref={setNodeRef}>
+          <Collapsible
+            open={isOpen}
+            onOpenChange={() => options.onToggleFolder(element.id)}
+            className="group/collapsible"
+          >
+            <SidebarMenuItem>
+              <ContextMenuTrigger asChild>
+                <CollapsibleTrigger asChild>
+                  <SidebarMenuButton
                     className={cn(
-                      "ml-auto transition-transform w-3.5 h-3.5 text-muted-foreground",
-                      isOpen && "rotate-90"
+                      options.isNested && "mr-0!",
+                      isOver && "bg-muted/60"
                     )}
-                  />
-                </SidebarMenuButton>
-              </CollapsibleTrigger>
-            </ContextMenuTrigger>
-            <CollapsibleContent>
-              <SidebarMenuSub className="mr-0! pr-0!">
-                <SidebarMenuSubItem>
-                  <SidebarTreeNodes
-                    elements={element.children ?? []}
-                    options={{ ...options, isNested: true }}
-                  />
-                </SidebarMenuSubItem>
-              </SidebarMenuSub>
-            </CollapsibleContent>
-          </SidebarMenuItem>
-        </Collapsible>
+                    {...attributes}
+                    {...listeners}
+                  >
+                    {isOpen ? (
+                      <FolderOpenIcon className="w-3.5 h-3.5 mr-2 flex-none text-muted-foreground" />
+                    ) : (
+                      <FolderIcon className="w-3.5 h-3.5 mr-2 flex-none text-muted-foreground" />
+                    )}
+                    <span className="font-normal">{element.name}</span>
+                    <ChevronRight
+                      className={cn(
+                        "ml-auto transition-transform w-3.5 h-3.5 text-muted-foreground",
+                        isOpen && "rotate-90"
+                      )}
+                    />
+                  </SidebarMenuButton>
+                </CollapsibleTrigger>
+              </ContextMenuTrigger>
+              <CollapsibleContent>
+                <SidebarMenuSub className="mr-0! pr-0!">
+                  <SidebarMenuSubItem>
+                    <SidebarTreeNodes
+                      elements={element.children ?? []}
+                      options={{ ...options, isNested: true }}
+                    />
+                  </SidebarMenuSubItem>
+                </SidebarMenuSub>
+              </CollapsibleContent>
+            </SidebarMenuItem>
+          </Collapsible>
+        </div>
       </div>
       <ContextMenuContent>
         <ContextMenuItem
@@ -333,32 +458,60 @@ function FolderTreeNode({
 function DocumentTreeNode({
   element,
   options,
+  index,
+  activeIndex,
 }: {
   element: SidebarTreeElement
   options: TreeRenderOptions
+  index: number
+  activeIndex: number
 }) {
   const folderSegments = element.documentPath?.split("/") ?? []
   folderSegments.pop()
   const currentFolderPath = folderSegments.join("/") || undefined
 
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: `document:${element.id}`,
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: element.id,
     data: {
-      type: "document" as const,
+      type: "document",
       documentId: element.documentId,
       slug: element.id,
       currentFolderPath,
       label: element.name,
+      sortOrder: element.sortOrder,
     },
   })
 
-  const dragStyle = transform
-    ? {
-        transform: CSS.Translate.toString(transform),
-      }
-    : undefined
+  const { active, over } = useDndContext()
+  const isOver = over?.id === element.id
+  const isDraggingSelf = active?.id === element.id
 
-  const hiddenWhileDragging = cn("transition-opacity", isDragging && "opacity-0")
+  let dropPosition: "top" | "bottom" | null = null
+
+  if (isOver && !isDraggingSelf) {
+    if (activeIndex === -1) {
+      dropPosition = "bottom"
+    } else if (activeIndex < index) {
+      dropPosition = "bottom"
+    } else {
+      dropPosition = "top"
+    }
+  }
+
+  const dragStyle = {
+    // Only apply transform if dragging this specific item
+    transform: undefined,
+    transition,
+  }
+
+  const hiddenWhileDragging = cn("transition-opacity", isDragging && "opacity-25")
   const isSelected = options.selectedSlug === element.id
 
   const fileButton = (
@@ -408,23 +561,20 @@ function DocumentTreeNode({
     </>
   )
 
-  const ghostClasses = cn(
-    "pointer-events-none absolute inset-0 flex w-full items-center gap-2 rounded-md p-2 text-left text-sm text-muted-foreground italic",
-    options.isNested && "mr-0!",
-    isSelected ? "bg-muted/50 font-semibold" : "bg-transparent"
-  )
+
 
   const draggableContent = (
-    <div className="relative">
-      <div ref={setNodeRef} style={dragStyle} className={hiddenWhileDragging}>
+    <div ref={setNodeRef} style={dragStyle} className="relative">
+      <div className={hiddenWhileDragging}>
         {menuContent}
       </div>
-      {isDragging && (
-        <div className={ghostClasses}>
-          <FileIcon className="w-3.5 h-3.5 mr-2 flex-none text-muted-foreground" />
-          <span className="font-normal truncate">{element.name}</span>
-        </div>
+      {dropPosition === "top" && (
+        <div className="absolute top-0 left-0 right-0 h-0.5 bg-primary z-10" />
       )}
+      {dropPosition === "bottom" && (
+        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary z-10" />
+      )}
+
     </div>
   )
 
@@ -479,6 +629,24 @@ export function AppSidebar() {
     })
   )
   const [activeDragItem, setActiveDragItem] = useState<{ label: string } | null>(null)
+
+  const updateSortOrder = useCallback(async (id: string, type: "document" | "folder", sortOrder: number) => {
+    try {
+      const response = await fetch("/api/markdown", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, type, sortOrder }),
+      })
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}))
+        throw new Error(body.error ?? "Failed to save order")
+      }
+    } catch (error) {
+      console.error("Failed to update sort order", error)
+      toast.error(error instanceof Error ? error.message : "Failed to save order")
+    }
+  }, [])
 
   const loadDocuments = useCallback(
     async ({
@@ -807,7 +975,7 @@ export function AppSidebar() {
   )
 
   const moveDocumentToFolder = useCallback(
-    async (documentId: string, targetFolderPath?: string, label?: string) => {
+    async (documentId: string, targetFolderPath?: string, label?: string, sortOrder?: number) => {
       const response = await fetch("/api/markdown", {
         method: "PATCH",
         headers: {
@@ -816,6 +984,7 @@ export function AppSidebar() {
         body: JSON.stringify({
           id: documentId,
           targetFolderPath: targetFolderPath ?? null,
+          sortOrder,
         }),
       })
 
@@ -903,10 +1072,10 @@ export function AppSidebar() {
   )
 
   const triggerMoveDocument = useCallback(
-    (documentId: string, targetFolderPath?: string, label?: string) => {
+    (documentId: string, targetFolderPath?: string, label?: string, sortOrder?: number) => {
       if (!documentId || isActionPending) return
       startActionTransition(() => {
-        moveDocumentToFolder(documentId, targetFolderPath, label).catch((error) => {
+        moveDocumentToFolder(documentId, targetFolderPath, label, sortOrder).catch((error) => {
           console.error(error)
           toast.error(error instanceof Error ? error.message : "Unable to move document")
         })
@@ -950,29 +1119,214 @@ export function AppSidebar() {
     (event: DragEndEvent) => {
       setActiveDragItem(null)
 
-      const activeData = event.active.data.current
-      const overData = event.over?.data.current
+      const { active, over } = event
+      if (!over) return
 
+      const activeData = active.data.current
+      const overData = over.data.current
+
+      if (!activeData || !overData) return
+
+      // Helper to find parent and siblings
+      const findContext = (elements: SidebarTreeElement[], targetId: string): { parent: SidebarTreeElement | null, siblings: SidebarTreeElement[] } | null => {
+        for (const el of elements) {
+          if (el.id === targetId) {
+            return { parent: null, siblings: elements }
+          }
+          if (el.children) {
+            const found = el.children.find(c => c.id === targetId)
+            if (found) return { parent: el, siblings: el.children }
+            const deep = findContext(el.children, targetId)
+            if (deep) return deep
+          }
+        }
+        return null
+      }
+
+      const findFolderByPath = (
+        elements: SidebarTreeElement[],
+        targetPath?: string
+      ): SidebarTreeElement | null => {
+        if (!targetPath) {
+          return {
+            id: DOCUMENTS_ROOT_ID,
+            name: "root",
+            isSelectable: false,
+            kind: "folder",
+            folderPath: undefined,
+            children: elements,
+          }
+        }
+
+        for (const el of elements) {
+          if (el.kind === "folder") {
+            if (el.folderPath === targetPath) {
+              return el
+            }
+            if (el.children?.length) {
+              const found = findFolderByPath(el.children, targetPath)
+              if (found) {
+                return found
+              }
+            }
+          }
+        }
+        return null
+      }
+
+      // Calculate drop position relative to over element
+      let isMiddleZone = false
+      if (active.rect.current.translated && over.rect) {
+        const activeRect = active.rect.current.translated
+        const overRect = over.rect
+        const activeCenterY = activeRect.top + activeRect.height / 2
+        const overTop = overRect.top
+        const overHeight = overRect.height
+        const relativeY = (activeCenterY - overTop) / overHeight
+
+        if (relativeY >= 0.25 && relativeY <= 0.75) {
+          isMiddleZone = true
+        }
+      }
+
+      // 1. Handle Reordering / Moving
+      // Check if both items have sortOrder (implies they are sortable items in the tree)
+      if (typeof activeData.sortOrder === 'number' && typeof overData.sortOrder === 'number') {
+        const activeId = active.id as string
+        const overId = over.id as string
+
+        if (activeId !== overId) {
+          const activeContext = findContext(treeElements, activeId)
+          const overContext = findContext(treeElements, overId)
+
+          if (activeContext && overContext) {
+            const isOverFolder = overData.type === 'folder'
+
+            // Check for "Move Into Folder" (Middle Zone)
+            if (isOverFolder && isMiddleZone) {
+              // Handled below in legacy logic, or we can do it here
+              // Let's fall through to legacy logic for "Move Into"
+            } else {
+              // Reordering (Same list) OR Moving to specific position (Cross list)
+
+              const siblings = overContext.siblings
+              const overIndex = siblings.findIndex(x => x.id === overId)
+
+              if (overIndex !== -1) {
+                let newSortOrder = 0
+
+                if (activeContext.siblings === overContext.siblings) {
+                  // Same list reorder
+                  const oldIndex = activeContext.siblings.findIndex(x => x.id === activeId)
+                  const newOrderArray = arrayMove(siblings, oldIndex, overIndex)
+
+                  const prevItem = newOrderArray[overIndex - 1]
+                  const nextItem = newOrderArray[overIndex + 1]
+
+                  if (!prevItem && nextItem) {
+                    newSortOrder = (nextItem.sortOrder ?? 0) - 1000
+                  } else if (prevItem && !nextItem) {
+                    newSortOrder = (prevItem.sortOrder ?? 0) + 1000
+                  } else if (prevItem && nextItem) {
+                    newSortOrder = ((prevItem.sortOrder ?? 0) + (nextItem.sortOrder ?? 0)) / 2
+                  }
+
+                  // Update Sort Order Only
+                  const item = siblings[oldIndex]
+                  const type = item.kind
+                  let dbId = type === "document" ? item.documentId! : (folders.find(f => f.folderPath === item.folderPath)?.id ?? "")
+
+                  if (dbId) {
+                    updateSortOrder(dbId, type, newSortOrder)
+                    loadDocuments({ silent: true })
+                  }
+                  return
+                } else {
+                  // Cross list move & insert
+                  // Determine insertion index
+                  // If relativeY < 0.5 (top), insert before overIndex
+                  // If relativeY > 0.5 (bottom), insert after overIndex
+
+                  // We need to recalculate relativeY here because isMiddleZone is boolean
+                  let insertAfter = true
+                  if (active.rect.current.translated && over.rect) {
+                    const activeRect = active.rect.current.translated
+                    const overRect = over.rect
+                    const activeCenterY = activeRect.top + activeRect.height / 2
+                    const overTop = overRect.top
+                    const overHeight = overRect.height
+                    const relativeY = (activeCenterY - overTop) / overHeight
+                    if (relativeY < 0.5) insertAfter = false
+                  }
+
+                  const insertionIndex = insertAfter ? overIndex + 1 : overIndex
+
+                  const prevItem = siblings[insertionIndex - 1]
+                  const nextItem = siblings[insertionIndex]
+
+                  if (!prevItem && nextItem) {
+                    newSortOrder = (nextItem.sortOrder ?? 0) - 1000
+                  } else if (prevItem && !nextItem) {
+                    newSortOrder = (prevItem.sortOrder ?? 0) + 1000
+                  } else if (prevItem && nextItem) {
+                    newSortOrder = ((prevItem.sortOrder ?? 0) + (nextItem.sortOrder ?? 0)) / 2
+                  } else {
+                    // Empty list or only item? 
+                    // If siblings is empty? No, overId exists.
+                    // If inserting into a list where overId is the only item.
+                    // If insertAfter: prev=over, next=undefined -> over + 1000
+                    // If insertBefore: prev=undefined, next=over -> over - 1000
+                    // Logic holds.
+                    // Fallback
+                    newSortOrder = (siblings[overIndex].sortOrder ?? 0) + (insertAfter ? 1000 : -1000)
+                  }
+
+                  // Perform Move with SortOrder
+                  const targetFolderPath = overContext.parent?.folderPath
+
+                  if (activeData.type === "document" && activeData.documentId) {
+                    triggerMoveDocument(activeData.documentId, targetFolderPath, activeData.label, newSortOrder)
+                    return
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // 2. Handle Move to Folder (Move Into)
       if (
-        !activeData ||
-        activeData.type !== "document" ||
-        !overData ||
-        overData.type !== "folder" ||
-        !activeData.documentId
+        activeData.type === "document" &&
+        overData.type === "folder" &&
+        activeData.documentId
       ) {
-        return
+        const targetFolderPath = overData.folderPath ?? undefined
+        const currentFolderPath = activeData.currentFolderPath ?? undefined
+
+        if (targetFolderPath === currentFolderPath) {
+          return
+        }
+
+        const targetFolder = findFolderByPath(treeElements, targetFolderPath)
+        const siblings = targetFolder?.children ?? []
+        const maxSortOrder = siblings.reduce((max, item) => {
+          if (typeof item.sortOrder === "number") {
+            return Math.max(max, item.sortOrder)
+          }
+          return max
+        }, Number.NEGATIVE_INFINITY)
+        const nextSortOrder = Number.isFinite(maxSortOrder) ? maxSortOrder + 1000 : 0
+
+        triggerMoveDocument(
+          activeData.documentId,
+          targetFolderPath,
+          activeData.label,
+          nextSortOrder
+        )
       }
-
-      const targetFolderPath = overData.folderPath ?? undefined
-      const currentFolderPath = activeData.currentFolderPath ?? undefined
-
-      if (targetFolderPath === currentFolderPath) {
-        return
-      }
-
-      triggerMoveDocument(activeData.documentId, targetFolderPath, activeData.label)
     },
-    [triggerMoveDocument]
+    [triggerMoveDocument, treeElements, folders, updateSortOrder, loadDocuments]
   )
 
   const handleDragCancel = useCallback(() => {
@@ -1073,29 +1427,29 @@ export function AppSidebar() {
         </SidebarHeader>
 
         <SidebarGroup>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton 
-                    className="w-full justify-start"
-                    onClick={handleCreateDocument}
-                    disabled={isActionPending}
-                  >
-                    <FileIcon className="size-4" />
-                    <span>New Document</span>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  className="w-full justify-start"
+                  onClick={handleCreateDocument}
+                  disabled={isActionPending}
+                >
+                  <FileIcon className="size-4" />
+                  <span>New Document</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <Link href="/terminal">
+                  <SidebarMenuButton className="w-full justify-start">
+                    <Terminal className="size-4" />
+                    <span>Terminal</span>
                   </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <Link href="/terminal">
-                    <SidebarMenuButton className="w-full justify-start">
-                      <Terminal className="size-4" />
-                      <span>Terminal</span>
-                    </SidebarMenuButton>
-                  </Link>
-                </SidebarMenuItem>
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
+                </Link>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
 
 
         <SidebarContent className="flex flex-col">
@@ -1129,7 +1483,7 @@ export function AppSidebar() {
               {isLoadingFiles && (
                 <SidebarMenu>
                   <SidebarMenuButton>
-                    <Spinner className="size-4"  />
+                    <Spinner className="size-4" />
                     <span className="text-xs text-muted-foreground">Loading files…</span>
                   </SidebarMenuButton>
                 </SidebarMenu>
@@ -1144,6 +1498,7 @@ export function AppSidebar() {
               {!isLoadingFiles && !filesError && treeElements.length > 0 && (
                 <DndContext
                   sensors={sensors}
+                  collisionDetection={closestCenter}
                   onDragStart={handleDragStart}
                   onDragEnd={handleDragEnd}
                   onDragCancel={handleDragCancel}
@@ -1180,7 +1535,7 @@ export function AppSidebar() {
               )}
             </SidebarGroupContent>
           </SidebarGroup>
-          
+
         </SidebarContent>
         <SidebarFooter className="">
           <UserMenu />

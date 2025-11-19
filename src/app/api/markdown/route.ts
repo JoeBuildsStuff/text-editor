@@ -14,6 +14,7 @@ import {
   renameMarkdownFile,
   renameFolder,
   updateMarkdownFileContent,
+  updateSortOrder,
 } from "@/lib/markdown-files";
 
 async function ensureAuthenticated(request: Request): Promise<AuthSession | NextResponse> {
@@ -69,6 +70,12 @@ const renameFolderSchema = z.object({
 const updateContentSchema = z.object({
   id: z.string().uuid(),
   content: z.string(),
+});
+
+const reorderSchema = z.object({
+  id: z.string().uuid(),
+  type: z.enum(["document", "folder"]),
+  sortOrder: z.number(),
 });
 
 const deleteSchema = z.union([
@@ -152,14 +159,14 @@ export async function PATCH(request: Request) {
   const session = sessionOrResponse as AuthSession;
   try {
     const data = await request.json();
-    
+
     // Check if this is a content update (has content field) or rename (has title field)
     if ("content" in data && !("title" in data)) {
       const payload = updateContentSchema.parse(data);
       const document = await updateMarkdownFileContent(payload.id, payload.content, session.user.id);
       return NextResponse.json({ document });
     }
-    
+
     // Check if this is a folder rename
     if ("type" in data && data.type === "folder" && "newName" in data) {
       const payload = renameFolderSchema.parse(data);
@@ -170,8 +177,17 @@ export async function PATCH(request: Request) {
     // Check if this is a move operation
     if ("targetFolderPath" in data) {
       const payload = moveDocumentSchema.parse(data);
-      const document = await moveMarkdownFile(payload.id, payload.targetFolderPath, session.user.id);
+      // Extract sortOrder manually as it's not in the schema yet, or we can cast data
+      const sortOrder = "sortOrder" in data ? (data.sortOrder as number) : undefined;
+      const document = await moveMarkdownFile(payload.id, payload.targetFolderPath, session.user.id, sortOrder);
       return NextResponse.json({ document });
+    }
+
+    // Check if this is a reorder operation
+    if ("sortOrder" in data) {
+      const payload = reorderSchema.parse(data);
+      await updateSortOrder(payload.id, payload.type, payload.sortOrder, session.user.id);
+      return NextResponse.json({ success: true });
     }
 
     // Otherwise, treat as document rename

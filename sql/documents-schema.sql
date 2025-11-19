@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS documents (
   document_path TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
+  sort_order REAL DEFAULT 0,
   UNIQUE(user_id, document_path)
 );
 
@@ -17,6 +18,7 @@ CREATE TABLE IF NOT EXISTS folders (
   folder_path TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
+  sort_order REAL DEFAULT 0,
   UNIQUE(user_id, folder_path)
 );
 

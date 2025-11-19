@@ -23,7 +23,7 @@ export default async function DocumentsPage() {
   }
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-6xl flex-col gap-6 py-6">
+    <div className="mx-auto flex h-full w-full max-w-6xl flex-col gap-6">
       {documents.length > 0 && (
         <div>
           <h2 className="text-lg font-semibold mb-4">All Documents</h2>

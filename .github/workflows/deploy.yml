@@ -52,5 +52,8 @@ jobs:
             docker compose build --pull text-editor
             docker compose up -d --remove-orphans text-editor
 
+            # TODO: add a post-deploy hook that runs any pending sql/migrations/*.sql
+            # files so schema changes ship automatically with the app
+
             echo "Pruning dangling images"
             docker image prune -f

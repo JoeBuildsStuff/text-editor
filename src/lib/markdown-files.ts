@@ -22,11 +22,13 @@ export type DocumentRecord = BaseRecord & {
   kind: "document"
   title: string
   documentPath: string
+  sortOrder?: number
 }
 
 export type FolderRecord = BaseRecord & {
   kind: "folder"
   folderPath: string
+  sortOrder?: number
 }
 
 export type MetadataRecord = DocumentRecord | FolderRecord
@@ -103,10 +105,10 @@ async function readFileContent(documentPath: string, userId: string): Promise<st
 async function writeFileContent(documentPath: string, content: string, userId: string): Promise<void> {
   const absolutePath = getAbsoluteFilePath(documentPath, userId)
   const dir = path.dirname(absolutePath)
-  
+
   // Ensure directory exists
   await mkdir(dir, { recursive: true })
-  
+
   // Write file
   await writeFile(absolutePath, content, "utf-8")
 }
@@ -181,7 +183,7 @@ async function documentRecordToMeta(
 ): Promise<MarkdownFileMeta> {
   const filename = path.basename(row.document_path)
   const relativePath = buildRelativePath(row.document_path, row.user_id)
-  
+
   let content: string | undefined
   if (includeContent) {
     content = await readFileContent(row.document_path, row.user_id)
@@ -198,6 +200,7 @@ async function documentRecordToMeta(
     relativePath,
     slug: row.id,
     content,
+    sortOrder: (row as any).sort_order ?? 0,
   }
 }
 
@@ -219,13 +222,13 @@ export async function getMarkdownFileById(id?: string | null, userId?: string) {
     .prepare("SELECT * FROM documents WHERE id = ? AND user_id = ?")
     .get(id, userId) as
     | {
-        id: string
-        user_id: string
-        title: string
-        document_path: string
-        created_at: string
-        updated_at: string
-      }
+      id: string
+      user_id: string
+      title: string
+      document_path: string
+      created_at: string
+      updated_at: string
+    }
     | undefined
 
   if (!row) return undefined
@@ -238,15 +241,15 @@ export async function listMarkdownItems({ includeContent = true, userId }: ListO
 
   // Get all documents for this user
   const documentRows = db
-    .prepare("SELECT * FROM documents WHERE user_id = ? ORDER BY document_path")
+    .prepare("SELECT * FROM documents WHERE user_id = ? ORDER BY sort_order ASC, title ASC")
     .all(userId) as Array<{
-    id: string
-    user_id: string
-    title: string
-    document_path: string
-    created_at: string
-    updated_at: string
-  }>
+      id: string
+      user_id: string
+      title: string
+      document_path: string
+      created_at: string
+      updated_at: string
+    }>
 
   const documents = await Promise.all(
     documentRows.map((row) => documentRecordToMeta(row, includeContent))
@@ -254,14 +257,15 @@ export async function listMarkdownItems({ includeContent = true, userId }: ListO
 
   // Get all folders for this user
   const folderRows = db
-    .prepare("SELECT * FROM folders WHERE user_id = ? ORDER BY folder_path")
+    .prepare("SELECT * FROM folders WHERE user_id = ? ORDER BY sort_order ASC, folder_path ASC")
     .all(userId) as Array<{
-    id: string
-    user_id: string
-    folder_path: string
-    created_at: string
-    updated_at: string
-  }>
+      id: string
+      user_id: string
+      folder_path: string
+      created_at: string
+      updated_at: string
+      sort_order: number
+    }>
 
   const folders: FolderRecord[] = folderRows.map((row) => ({
     id: row.id,
@@ -269,6 +273,7 @@ export async function listMarkdownItems({ includeContent = true, userId }: ListO
     folderPath: row.folder_path,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    sortOrder: row.sort_order,
   }))
 
   return {
@@ -406,13 +411,13 @@ export async function createMarkdownFile(
       const updated = db
         .prepare("SELECT * FROM documents WHERE document_path = ? AND user_id = ?")
         .get(documentPath, userId) as {
-        id: string
-        user_id: string
-        title: string
-        document_path: string
-        created_at: string
-        updated_at: string
-      }
+          id: string
+          user_id: string
+          title: string
+          document_path: string
+          created_at: string
+          updated_at: string
+        }
 
       return documentRecordToMeta(updated, false)
     }
@@ -432,13 +437,13 @@ export async function createMarkdownFile(
   const created = db
     .prepare("SELECT * FROM documents WHERE id = ? AND user_id = ?")
     .get(id, userId) as {
-    id: string
-    user_id: string
-    title: string
-    document_path: string
-    created_at: string
-    updated_at: string
-  }
+      id: string
+      user_id: string
+      title: string
+      document_path: string
+      created_at: string
+      updated_at: string
+    }
 
   return documentRecordToMeta(created, false)
 }
@@ -508,12 +513,12 @@ export async function createFolder(folderPathInput: string, userId: string) {
   const created = db
     .prepare("SELECT * FROM folders WHERE id = ? AND user_id = ?")
     .get(id, userId) as {
-    id: string
-    user_id: string
-    folder_path: string
-    created_at: string
-    updated_at: string
-  }
+      id: string
+      user_id: string
+      folder_path: string
+      created_at: string
+      updated_at: string
+    }
 
   return {
     id: created.id,
@@ -537,13 +542,13 @@ export async function renameMarkdownFile(id: string, proposedTitle: string, user
     .prepare("SELECT * FROM documents WHERE id = ? AND user_id = ?")
     .get(id, userId) as
     | {
-        id: string
-        user_id: string
-        title: string
-        document_path: string
-        created_at: string
-        updated_at: string
-      }
+      id: string
+      user_id: string
+      title: string
+      document_path: string
+      created_at: string
+      updated_at: string
+    }
     | undefined
 
   if (!existing) {
@@ -573,7 +578,7 @@ export async function renameMarkdownFile(id: string, proposedTitle: string, user
     // Rename the file
     const oldAbsolutePath = getAbsoluteFilePath(existing.document_path, userId)
     const newAbsolutePath = getAbsoluteFilePath(nextDocumentPath, userId)
-    
+
     await rename(oldAbsolutePath, newAbsolutePath)
   }
 
@@ -586,13 +591,13 @@ export async function renameMarkdownFile(id: string, proposedTitle: string, user
   const updated = db
     .prepare("SELECT * FROM documents WHERE id = ? AND user_id = ?")
     .get(id, userId) as {
-    id: string
-    user_id: string
-    title: string
-    document_path: string
-    created_at: string
-    updated_at: string
-  }
+      id: string
+      user_id: string
+      title: string
+      document_path: string
+      created_at: string
+      updated_at: string
+    }
 
   return documentRecordToMeta(updated, false)
 }
@@ -600,7 +605,8 @@ export async function renameMarkdownFile(id: string, proposedTitle: string, user
 export async function moveMarkdownFile(
   id: string,
   targetFolderPathInput: string | null | undefined,
-  userId: string
+  userId: string,
+  sortOrder?: number
 ) {
   const db = getDatabase()
 
@@ -608,13 +614,13 @@ export async function moveMarkdownFile(
     .prepare("SELECT * FROM documents WHERE id = ? AND user_id = ?")
     .get(id, userId) as
     | {
-        id: string
-        user_id: string
-        title: string
-        document_path: string
-        created_at: string
-        updated_at: string
-      }
+      id: string
+      user_id: string
+      title: string
+      document_path: string
+      created_at: string
+      updated_at: string
+    }
     | undefined
 
   if (!existing) {
@@ -641,7 +647,13 @@ export async function moveMarkdownFile(
     ? toPosixPath(`${targetFolderPath}/${filename}`)
     : filename
 
+  // If path hasn't changed, but sortOrder is provided, update sortOrder
   if (nextDocumentPath === existing.document_path) {
+    if (sortOrder !== undefined) {
+      db.prepare("UPDATE documents SET sort_order = ? WHERE id = ? AND user_id = ?").run(sortOrder, id, userId)
+      const metadata = await documentRecordToMeta(existing, false)
+      return { ...metadata, sortOrder }
+    }
     return documentRecordToMeta(existing, false)
   }
 
@@ -664,20 +676,26 @@ export async function moveMarkdownFile(
 
   const timestamp = new Date().toISOString()
 
-  db.prepare(
-    "UPDATE documents SET document_path = ?, updated_at = ? WHERE id = ? AND user_id = ?"
-  ).run(nextDocumentPath, timestamp, id, userId)
+  if (sortOrder !== undefined) {
+    db.prepare(
+      "UPDATE documents SET document_path = ?, updated_at = ?, sort_order = ? WHERE id = ? AND user_id = ?"
+    ).run(nextDocumentPath, timestamp, sortOrder, id, userId)
+  } else {
+    db.prepare(
+      "UPDATE documents SET document_path = ?, updated_at = ? WHERE id = ? AND user_id = ?"
+    ).run(nextDocumentPath, timestamp, id, userId)
+  }
 
   const updated = db
     .prepare("SELECT * FROM documents WHERE id = ? AND user_id = ?")
     .get(id, userId) as {
-    id: string
-    user_id: string
-    title: string
-    document_path: string
-    created_at: string
-    updated_at: string
-  }
+      id: string
+      user_id: string
+      title: string
+      document_path: string
+      created_at: string
+      updated_at: string
+    }
 
   return documentRecordToMeta(updated, false)
 }
@@ -704,13 +722,13 @@ export async function updateMarkdownFileContent(id: string, content: string, use
   const updated = db
     .prepare("SELECT * FROM documents WHERE id = ? AND user_id = ?")
     .get(id, userId) as {
-    id: string
-    user_id: string
-    title: string
-    document_path: string
-    created_at: string
-    updated_at: string
-  }
+      id: string
+      user_id: string
+      title: string
+      document_path: string
+      created_at: string
+      updated_at: string
+    }
 
   return documentRecordToMeta(updated, true)
 }
@@ -722,13 +740,13 @@ export async function deleteMarkdownFile(id: string, userId: string) {
     .prepare("SELECT * FROM documents WHERE id = ? AND user_id = ?")
     .get(id, userId) as
     | {
-        id: string
-        user_id: string
-        title: string
-        document_path: string
-        created_at: string
-        updated_at: string
-      }
+      id: string
+      user_id: string
+      title: string
+      document_path: string
+      created_at: string
+      updated_at: string
+    }
     | undefined
 
   if (!existing) {
@@ -794,84 +812,94 @@ export async function renameFolder(folderPathInput: string, newNameInput: string
   // Rename the folder directory
   const oldAbsolutePath = path.join(getUserDocumentsDir(userId), sanitizedOldPath)
   const newAbsolutePath = path.join(getUserDocumentsDir(userId), newFolderPath)
-  
+
   try {
     await rename(oldAbsolutePath, newAbsolutePath)
   } catch (error) {
-    throw new MarkdownFileOperationError(
-      `Failed to rename folder: ${error instanceof Error ? error.message : "Unknown error"}`,
-      500
-    )
+    // If rename fails, we should probably rollback the DB change or handle it
+    // For now, we'll just rethrow
+    throw error
   }
 
-  // Get all documents and nested folders before updating database
-  const documents = db
-    .prepare("SELECT id, document_path FROM documents WHERE document_path LIKE ? AND user_id = ?")
-    .all(`${sanitizedOldPath}/%`, userId) as Array<{ id: string; document_path: string }>
+  // Update paths in database
+  // We need to update the folder itself AND all children (documents and subfolders)
 
-  const nestedFolders = db
-    .prepare("SELECT folder_path FROM folders WHERE folder_path LIKE ? AND folder_path != ? AND user_id = ?")
-    .all(`${sanitizedOldPath}/%`, sanitizedOldPath, userId) as Array<{ folder_path: string }>
-
-    // Rename all document files
-  for (const doc of documents) {
-    const newDocPath = doc.document_path.replace(sanitizedOldPath, newFolderPath)
-    const oldDocAbsolutePath = getAbsoluteFilePath(doc.document_path, userId)
-    const newDocAbsolutePath = getAbsoluteFilePath(newDocPath, userId)
-    
-    try {
-      await rename(oldDocAbsolutePath, newDocAbsolutePath)
-    } catch (error) {
-      // Log but continue - file might not exist
-      console.warn(`Failed to rename document file: ${doc.document_path}`, error)
-    }
-  }
-
-  // Update database in transaction
   const timestamp = new Date().toISOString()
 
-  const transaction = db.transaction(() => {
-    // Update the folder itself first
-    db.prepare("UPDATE folders SET folder_path = ?, updated_at = ? WHERE folder_path = ? AND user_id = ?").run(
-      newFolderPath,
-      timestamp,
-      sanitizedOldPath,
-      userId
-    )
+  const updateChildren = db.transaction(() => {
+    // Update the folder itself
+    db.prepare(
+      "UPDATE folders SET folder_path = ?, updated_at = ? WHERE id = ? AND user_id = ?"
+    ).run(newFolderPath, timestamp, folder.id, userId)
 
-    // Update all nested folder paths
-    for (const nestedFolder of nestedFolders) {
-      const newNestedPath = nestedFolder.folder_path.replace(sanitizedOldPath, newFolderPath)
-      db.prepare("UPDATE folders SET folder_path = ?, updated_at = ? WHERE folder_path = ? AND user_id = ?").run(
-        newNestedPath,
-        timestamp,
-        nestedFolder.folder_path,
-        userId
-      )
+    // Update child folders
+    const childFolders = db
+      .prepare("SELECT id, folder_path FROM folders WHERE folder_path LIKE ? || '/%' AND user_id = ?")
+      .all(sanitizedOldPath, userId) as { id: string; folder_path: string }[]
+
+    for (const child of childFolders) {
+      const childRelative = child.folder_path.slice(sanitizedOldPath.length + 1)
+      const newChildPath = `${newFolderPath}/${childRelative}`
+      db.prepare("UPDATE folders SET folder_path = ? WHERE id = ?").run(newChildPath, child.id)
     }
 
-    // Update all document paths
-    for (const doc of documents) {
-      const newDocPath = doc.document_path.replace(sanitizedOldPath, newFolderPath)
-      db.prepare("UPDATE documents SET document_path = ?, updated_at = ? WHERE id = ? AND user_id = ?").run(
-        newDocPath,
-        timestamp,
-        doc.id,
-        userId
-      )
-    }
+    // Update child documents
+    const childDocs = db
+      .prepare("SELECT id, document_path FROM documents WHERE document_path LIKE ? || '/%' AND user_id = ?")
+      .all(sanitizedOldPath, userId) as { id: string; document_path: string }[]
 
-    return {
-      id: folder.id,
-      kind: "folder" as const,
-      folderPath: newFolderPath,
-      createdAt: new Date().toISOString(),
-      updatedAt: timestamp,
+    for (const doc of childDocs) {
+      const docRelative = doc.document_path.slice(sanitizedOldPath.length + 1)
+      const newDocPath = `${newFolderPath}/${docRelative}`
+      db.prepare("UPDATE documents SET document_path = ? WHERE id = ?").run(newDocPath, doc.id)
     }
   })
 
-  return transaction()
+  updateChildren()
+
+  const updated = db
+    .prepare("SELECT * FROM folders WHERE id = ? AND user_id = ?")
+    .get(folder.id, userId) as {
+      id: string
+      user_id: string
+      folder_path: string
+      created_at: string
+      updated_at: string
+      sort_order: number
+    }
+
+  return {
+    id: updated.id,
+    kind: "folder" as const,
+    folderPath: updated.folder_path,
+    createdAt: updated.created_at,
+    updatedAt: updated.updated_at,
+    sortOrder: updated.sort_order,
+  }
 }
+
+export async function updateSortOrder(
+  id: string,
+  type: "document" | "folder",
+  sortOrder: number,
+  userId: string
+) {
+  const db = getDatabase()
+  const table = type === "document" ? "documents" : "folders"
+
+  const existing = db
+    .prepare(`SELECT id FROM ${table} WHERE id = ? AND user_id = ?`)
+    .get(id, userId)
+
+  if (!existing) {
+    throw new MarkdownFileOperationError(`${type === "document" ? "Document" : "Folder"} not found`, 404)
+  }
+
+  db.prepare(`UPDATE ${table} SET sort_order = ? WHERE id = ? AND user_id = ?`).run(sortOrder, id, userId)
+
+  return { success: true }
+}
+
 
 export async function deleteFolder(folderPathInput: string, userId: string) {
   const sanitized = sanitizeFolderPath(folderPathInput)
