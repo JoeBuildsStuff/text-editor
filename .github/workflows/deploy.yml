@@ -55,5 +55,20 @@ jobs:
             # TODO: add a post-deploy hook that runs any pending sql/migrations/*.sql
             # files so schema changes ship automatically with the app
 
-            echo "Pruning dangling images"
-            docker image prune -f
+            echo "Disk usage before prune:"
+            docker system df || true
+
+            echo "Pruning Docker build cache older than 7 days"
+            docker builder prune -af --filter "until=168h" || true
+
+            echo "Pruning unused Docker images older than 7 days"
+            docker image prune -af --filter "until=168h" || true
+
+            echo "Pruning stopped containers older than 7 days"
+            docker container prune -f --filter "until=168h" || true
+
+            echo "Pruning unused Docker volumes older than 30 days"
+            docker volume prune -f --filter "until=720h" || true
+
+            echo "Disk usage after prune:"
+            docker system df || true
