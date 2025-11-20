@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -34,7 +34,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Ellipsis, KeyRound, RefreshCw, Trash2 } from "lucide-react";
+import { Ellipsis, KeyRound, RefreshCw, Trash } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -60,7 +60,7 @@ export function AdminUsersClient({ initialUsers }: Props) {
   const [passwordInput, setPasswordInput] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
 
-  const refresh = () => {
+  const refresh = useCallback(() => {
     startRefresh(async () => {
       try {
         const res = await fetch("/api/admin/users");
@@ -72,13 +72,12 @@ export function AdminUsersClient({ initialUsers }: Props) {
         toast.error("Failed to refresh users");
       }
     });
-  };
+  }, [startRefresh]);
 
   useEffect(() => {
     // re-fetch on mount to ensure freshest state
     refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [refresh]);
 
   const toggleAdmin = (userId: string, next: boolean) => {
     setInFlight((prev) => ({ ...prev, [userId]: true }));
@@ -382,7 +381,7 @@ export function AdminUsersClient({ initialUsers }: Props) {
                         disabled={deletingUser(user.id)}
                         onClick={() => setDeleteTarget({ id: user.id, email: user.email })}
                       >
-                        <Trash2 className="mr-2 h-4 w-4" />
+                        <Trash className="mr-2 h-4 w-4" />
                         <span>{deletingUser(user.id) ? "Deleting..." : "Delete"}</span>
                       </DropdownMenuItem>
                     </DropdownMenuContent>

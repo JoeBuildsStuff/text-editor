@@ -10,7 +10,6 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
-  SidebarGroupAction,
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarHeader,
@@ -26,7 +25,6 @@ import {
   DragOverlay,
   DragStartEvent,
   PointerSensor,
-  useDraggable,
   useDroppable,
   useSensor,
   useSensors,
@@ -40,24 +38,14 @@ import {
   verticalListSortingStrategy,
   arrayMove,
 } from "@dnd-kit/sortable"
-import { CSS } from "@dnd-kit/utilities"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import {
   ChevronRight,
-  Ellipsis,
   File as FileIcon,
   Folder as FolderIcon,
   FolderOpenIcon,
-  FilePlus as FilePlusIcon,
-  FolderX,
-  Trash2,
   Terminal,
   Pencil,
+  Trash,
 } from "lucide-react"
 import { SidebarLogo } from "@/components/sidebar/app-sidebar-logo"
 import { usePathname, useRouter } from "next/navigation"
@@ -257,10 +245,10 @@ function SidebarTreeNodes({
   options: TreeRenderOptions
 }) {
   const { active } = useDndContext()
-  if (!elements.length) return null
-
   const items = useMemo(() => elements.map((e) => e.id), [elements])
   const activeIndex = elements.findIndex((e) => e.id === active?.id)
+
+  if (!elements.length) return null
 
   return (
     <SortableContext items={items} strategy={verticalListSortingStrategy}>
@@ -314,7 +302,6 @@ function FolderTreeNode({
     attributes,
     listeners,
     setNodeRef: setSortableRef,
-    transform,
     transition,
     isDragging,
   } = useSortable({
@@ -428,7 +415,7 @@ function FolderTreeNode({
           disabled={options.isActionPending}
           onSelect={() => options.onCreateDocument(folderPath)}
         >
-          <FilePlusIcon className="size-4" />
+          <FileIcon className="size-4" />
           Add Document
         </ContextMenuItem>
         <ContextMenuItem
@@ -453,7 +440,7 @@ function FolderTreeNode({
               disabled={options.isActionPending}
               onSelect={() => options.onDeleteFolder(folderPath)}
             >
-              <FolderX className="size-4" />
+              <Trash className="size-4" />
               Delete Folder
             </ContextMenuItem>
           </>
@@ -482,7 +469,6 @@ function DocumentTreeNode({
     attributes,
     listeners,
     setNodeRef,
-    transform,
     transition,
     isDragging,
   } = useSortable({
@@ -562,7 +548,7 @@ function DocumentTreeNode({
             }
           }}
         >
-          <Trash2 className="size-4" />
+          <Trash className="size-4" />
           Delete Document
         </ContextMenuItem>
       </ContextMenuContent>
@@ -1602,31 +1588,35 @@ export function AppSidebar() {
 
         <SidebarContent className="flex flex-col">
           <SidebarGroup>
-            <SidebarGroupLabel>Documents</SidebarGroupLabel>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <SidebarGroupAction title="Add Document or Folder">
-                  <Ellipsis className="size-4 text-muted-foreground" />
-                  <span className="sr-only">Add Document or Folder</span>
-                </SidebarGroupAction>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-48">
-                <DropdownMenuItem
+            <div className="flex items-center gap-1 px-2 pb-2">
+              <SidebarGroupLabel className="flex-1 px-0">
+                Documents
+              </SidebarGroupLabel>
+              <div className="flex items-center">
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
                   onClick={handleCreateDocument}
                   disabled={isActionPending}
+                  className="text-muted-foreground h-6 w-6 p-0.5"
+                  title="Add Document"
+                  aria-label="Add Document"
                 >
-                  <FileIcon className="mr-2 h-4 w-4" />
-                  <span>Add Document</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem
+                  <FileIcon className="size-3.5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
                   onClick={handleCreateFolder}
                   disabled={isActionPending}
+                  className="text-muted-foreground h-6 w-6 p-0.5"
+                  title="Add Folder"
+                  aria-label="Add Folder"
                 >
-                  <FolderIcon className="mr-2 h-4 w-4" />
-                  <span>Add Folder</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                  <FolderIcon className="size-3.5" />
+                </Button>
+              </div>
+            </div>
             <SidebarGroupContent>
               {isLoadingFiles && (
                 <SidebarMenu>

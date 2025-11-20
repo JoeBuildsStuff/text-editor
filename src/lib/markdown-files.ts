@@ -178,6 +178,7 @@ async function documentRecordToMeta(
     document_path: string
     created_at: string
     updated_at: string
+    sort_order?: number | null
   },
   includeContent: boolean
 ): Promise<MarkdownFileMeta> {
@@ -200,7 +201,7 @@ async function documentRecordToMeta(
     relativePath,
     slug: row.id,
     content,
-    sortOrder: (row as any).sort_order ?? 0,
+    sortOrder: row.sort_order ?? 0,
   }
 }
 
