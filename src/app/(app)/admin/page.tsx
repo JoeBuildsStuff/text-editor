@@ -38,7 +38,7 @@ export default async function AdminHomePage() {
         </div>
         <div>
           <h1 className="text-xl font-semibold">Admin</h1>
-          <p className="text-sm text-muted-foreground">Quick links to admin tools.</p>
+          <p className="text-sm text-muted-foreground">Links to admin tools.</p>
         </div>
       </div>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
