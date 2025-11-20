@@ -58,10 +58,11 @@ jobs:
             echo "Disk usage before prune:"
             docker system df || true
 
-            # For frequent deployments, aggressively clean unused build cache
-            # Each new build creates fresh cache, so old unused cache can be removed immediately
-            echo "Pruning all unused Docker build cache"
-            docker builder prune -af || true
+            # Clean build cache older than 2 hours (keeps recent cache for faster rebuilds)
+            # Recent cache helps with node_modules layer when dependencies don't change
+            # Older cache is unlikely to be reused and can be safely removed
+            echo "Pruning Docker build cache older than 2 hours"
+            docker builder prune -af --filter "until=2h" || true
 
             # Keep only images from last 24 hours, remove older unused ones
             echo "Pruning unused Docker images older than 24 hours"
