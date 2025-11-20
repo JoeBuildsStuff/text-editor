@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, type ReactNode } from "react"
+import { useMemo, useRef, useCallback, useState, type ReactNode } from "react"
 import {
   DndContext,
   DragOverlay,
@@ -11,9 +11,12 @@ import {
   type DragEndEvent,
   type DragCancelEvent,
   type Sensors,
+  defaultDropAnimationSideEffects,
+  type DropAnimationFunction,
 } from "@dnd-kit/core"
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { ChevronRight, File as FileIcon, Folder as FolderIcon, FolderOpenIcon, Pencil, Trash } from "lucide-react"
+import { CSS } from "@dnd-kit/utilities"
 
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarMenuSub, SidebarMenuSubItem } from "@/components/ui/sidebar"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -63,6 +66,12 @@ type TreeRenderOptions = {
   isNested?: boolean
 }
 
+type SourceGhostState = {
+  rect: { top: number; left: number; width: number; height: number }
+  label: string
+  kind: "folder" | "document"
+}
+
 export function SidebarTree({
   elements,
   selectedSlug,
@@ -83,6 +92,113 @@ export function SidebarTree({
   onDragCancel,
   activeDragLabel,
 }: SidebarTreeProps) {
+  const dropTargetRectRef = useRef<DOMRect | null>(null)
+  const [sourceGhost, setSourceGhost] = useState<SourceGhostState | null>(null)
+
+  const applyDropSideEffects = useMemo(
+    () =>
+      defaultDropAnimationSideEffects({
+        styles: {
+          active: {
+            opacity: "0",
+          },
+        },
+      }),
+    []
+  )
+
+  const dropAnimation = useCallback<DropAnimationFunction>(
+    ({ active, dragOverlay, transform }) => {
+      const targetRect = dropTargetRectRef.current ?? active.rect
+      dropTargetRectRef.current = null
+
+      if (!targetRect) {
+        setSourceGhost(null)
+        return
+      }
+
+      const translateX = dragOverlay.rect.left - targetRect.left
+      const translateY = dragOverlay.rect.top - targetRect.top
+      const finalTransform = {
+        x: transform.x - translateX,
+        y: transform.y - translateY,
+        scaleX: 1,
+        scaleY: 1,
+      }
+
+      const keyframes = [
+        { transform: CSS.Transform.toString(transform) },
+        { transform: CSS.Transform.toString(finalTransform) },
+      ]
+
+      const cleanup = applyDropSideEffects?.({ active, dragOverlay })
+      const animation = dragOverlay.node.animate(keyframes, {
+        duration: 220,
+        easing: "ease-out",
+        fill: "forwards",
+      })
+
+      return new Promise<void>((resolve) => {
+        const handleAnimationComplete = () => {
+          cleanup?.()
+          setSourceGhost(null)
+          resolve()
+        }
+
+        animation.onfinish = handleAnimationComplete
+        animation.oncancel = handleAnimationComplete
+      })
+    },
+    [applyDropSideEffects]
+  )
+
+  const handleDragStart = useCallback(
+    (event: DragStartEvent) => {
+      dropTargetRectRef.current = null
+      const data = event.active.data.current
+      const activeRect =
+        event.active.rect.current.initial ?? event.active.rect.current.translated ?? null
+
+      if (data && activeRect && (data.type === "folder" || data.type === "document")) {
+        setSourceGhost({
+          rect: {
+            top: activeRect.top,
+            left: activeRect.left,
+            width: activeRect.width,
+            height: activeRect.height,
+          },
+          label: data.label ?? (data.type === "folder" ? "Folder" : "Document"),
+          kind: data.type,
+        })
+      }
+
+      onDragStart?.(event)
+    },
+    [onDragStart]
+  )
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      if (event.over) {
+        dropTargetRectRef.current = calculateDropTargetRect(event) ?? dropTargetRectRef.current
+      } else {
+        dropTargetRectRef.current = null
+        setSourceGhost(null)
+      }
+      onDragEnd?.(event)
+    },
+    [onDragEnd]
+  )
+
+  const handleDragCancel = useCallback(
+    (event: DragCancelEvent) => {
+      dropTargetRectRef.current = null
+      setSourceGhost(null)
+      onDragCancel?.(event)
+    },
+    [onDragCancel]
+  )
+
   const options: TreeRenderOptions = {
     onSelect,
     selectedSlug,
@@ -105,23 +221,24 @@ export function SidebarTree({
     <DndContext
       sensors={sensors}
       collisionDetection={collisionDetection}
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
-      onDragCancel={onDragCancel}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
     >
       <RootDropZone>
         <SidebarMenu>
           <SidebarTreeNodes elements={elements} options={options} />
         </SidebarMenu>
       </RootDropZone>
-      <DragOverlay>
+      <DragOverlay dropAnimation={dropAnimation}>
         {activeDragLabel ? (
-          <div className="flex items-center gap-2 rounded-md bg-muted px-3 py-1.5 text-sm ring-1 ring-foreground">
-            <FileIcon className="size-4 text-muted-foreground" />
-            <span>{activeDragLabel}</span>
+          <div className="flex items-center rounded-md bg-muted px-3 py-1.5 text-sm ring-1 ring-foreground">
+            <FileIcon className="w-3.5 h-3.5 mr-2 flex-none text-muted-foreground" />
+            <span className="font-normal">{activeDragLabel}</span>
           </div>
         ) : null}
       </DragOverlay>
+      {sourceGhost ? <SourceGhostOverlay ghost={sourceGhost} /> : null}
     </DndContext>
   )
 }
@@ -249,12 +366,7 @@ function FolderTreeNode({
           isDragging && "opacity-25"
         )}
       >
-        {dropPosition === "top" && (
-          <div className="absolute top-0 left-0 right-0 h-0.5 bg-primary z-10" />
-        )}
-        {dropPosition === "bottom" && (
-          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary z-10" />
-        )}
+        {dropPosition === "top" && <DropGapIndicator />}
         <div ref={setNodeRef}>
           <Collapsible
             open={isOpen}
@@ -300,6 +412,7 @@ function FolderTreeNode({
             </SidebarMenuItem>
           </Collapsible>
         </div>
+        {dropPosition === "bottom" && <DropGapIndicator />}
       </div>
       <ContextMenuContent>
         <ContextMenuItem
@@ -447,13 +560,9 @@ function DocumentTreeNode({
 
   const draggableContent = (
     <div ref={setNodeRef} style={dragStyle} className="relative">
+      {dropPosition === "top" && <DropGapIndicator />}
       <div className={hiddenWhileDragging}>{menuContent}</div>
-      {dropPosition === "top" && (
-        <div className="absolute top-0 left-0 right-0 h-0.5 bg-primary z-10" />
-      )}
-      {dropPosition === "bottom" && (
-        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary z-10" />
-      )}
+      {dropPosition === "bottom" && <DropGapIndicator />}
     </div>
   )
 
@@ -465,6 +574,45 @@ function DocumentTreeNode({
     <SidebarMenuItem>
       <ContextMenu>{draggableContent}</ContextMenu>
     </SidebarMenuItem>
+  )
+}
+
+function DropGapIndicator() {
+  const { active } = useDndContext()
+  const activeData = active?.data.current as { type?: string; label?: string } | undefined
+
+  const label = activeData?.label ?? "Placeholder"
+  const isFolder = activeData?.type === "folder"
+  const Icon = isFolder ? FolderIcon : FileIcon
+
+  return (
+    <div className="px-3 py-2">
+      <div className="flex items-center rounded-md border border-dashed border-primary/40 bg-muted/40 px-3 py-1 text-sm text-muted-foreground">
+        <Icon className="w-3.5 h-3.5 mr-2 flex-none text-muted-foreground" />
+        <span className="truncate">{label}</span>
+      </div>
+    </div>
+  )
+}
+
+function SourceGhostOverlay({ ghost }: { ghost: SourceGhostState }) {
+  const Icon = ghost.kind === "folder" ? FolderIcon : FileIcon
+
+  return (
+    <div
+      className="pointer-events-none fixed z-[998]"
+      style={{
+        top: ghost.rect.top,
+        left: ghost.rect.left,
+        width: ghost.rect.width,
+        height: ghost.rect.height,
+      }}
+    >
+      <div className="flex h-full items-center rounded-md border border-dashed border-muted-foreground/40 bg-muted/70 px-2 py-1 text-sm text-muted-foreground">
+        <Icon className="w-3.5 h-3.5 mr-2 flex-none text-muted-foreground" />
+        <span className="truncate">{ghost.label}</span>
+      </div>
+    </div>
   )
 }
 
@@ -482,4 +630,31 @@ function RootDropZone({ children }: { children: ReactNode }) {
       {children}
     </div>
   )
+}
+
+function calculateDropTargetRect(event: DragEndEvent): DOMRect | null {
+  const { active, over } = event
+  if (!over?.rect) {
+    return null
+  }
+
+  const overRect = over.rect
+  const activeRect =
+    active.rect.current.translated ??
+    active.rect.current.initial ??
+    new DOMRect(overRect.left, overRect.top, overRect.width, overRect.height)
+
+  const centerY = activeRect.top + activeRect.height / 2
+  const overHeight = overRect.height || 1
+  const relativeY = (centerY - overRect.top) / overHeight
+  const isFolder = over.data.current?.type === "folder"
+
+  if (isFolder && relativeY >= 0.25 && relativeY <= 0.75) {
+    return new DOMRect(overRect.left, overRect.top, overRect.width, overRect.height)
+  }
+
+  const height = activeRect.height || overRect.height
+  const targetTop = relativeY < (isFolder ? 0.25 : 0.5) ? overRect.top : overRect.bottom - height
+
+  return new DOMRect(overRect.left, targetTop, overRect.width, height)
 }
