@@ -45,6 +45,13 @@ FROM node:20.19.5-slim AS runner
 # Install pnpm 9
 RUN corepack enable && corepack prepare pnpm@9 --activate
 
+# Install build deps for better-sqlite3 so prod install can compile native module
+RUN apt-get update && apt-get install -y \
+    python3 \
+    make \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Set production environment
@@ -85,4 +92,3 @@ EXPOSE 3000
 
 # Start the application
 CMD ["pnpm", "start"]
-
