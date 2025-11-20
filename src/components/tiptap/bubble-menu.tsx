@@ -66,9 +66,19 @@ const BubbleMenuComponent = ({ editor }: BubbleMenuProps) => {
                 placement: 'top',
             }}
             editor={editor}
-            shouldShow={({ editor }: { editor: Editor }) => {
-                const { from, to } = editor.state.selection
-                return from !== to
+            shouldShow={({ editor, state }) => {
+                if (!editor.isFocused) {
+                    return false
+                }
+
+                const { from, to, empty } = state.selection
+
+                if (empty) {
+                    return false
+                }
+
+                const selectedText = state.doc.textBetween(from, to).trim()
+                return selectedText.length > 0
             }}
         >
             <div className='flex flex-row gap-0.5 border rounded-xl border-border bg-background p-1'>
