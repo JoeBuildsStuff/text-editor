@@ -4,7 +4,7 @@ This directory contains comprehensive documentation to help you understand, deve
 
 ## 📚 Documentation Overview
 
-This is a markdown-based text editor built with Next.js and Tiptap. It provides a rich editing experience with document organization, file uploads, and user authentication.
+This is a markdown-based text editor built with Next.js and Tiptap. It provides a rich editing and document organization, file uploads, and user authentication.
 
 ## 📖 Documentation Structure
 
