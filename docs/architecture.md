@@ -107,6 +107,18 @@ App Layout
     └─► User Menu (Auth)
 ```
 
+### Sidebar Data Fetching & Caching
+
+The sidebar’s document tree keeps its state in the browser using **TanStack Query**:
+
+- `useMarkdownExplorer` subscribes to a single `markdown-index` query that mirrors the `/api/markdown` response.
+- `fetchMarkdownIndex` normalizes API payloads into strict `documents[]` + `folders[]` collections so every consumer sees consistent shapes.
+- The cached value remains visible during refetches, eliminating the flicker that previously occurred when the component reset to an empty list.
+- Create/delete/move/rename/reorder actions optimistically edit the cached tree, then invalidate the query so SQLite stays authoritative.
+- Because the cache is client-side, navigating between documents reuses the same tree (until a hard refresh), improving perceived performance.
+
+This pattern provides “stale-while-revalidate” behavior for the sidebar without introducing extra server complexity.
+
 ## Key Design Decisions
 
 ### 1. UUID-Based Document IDs

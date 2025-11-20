@@ -17,6 +17,11 @@ type MarkdownIndexResponse = {
   folders?: unknown[]
 }
 
+type MarkdownIndexResult = {
+  documents: MarkdownDocument[]
+  folders: MarkdownFolder[]
+}
+
 type DocumentResponse = {
   document?: Partial<MarkdownDocument> & { slug?: string; documentPath?: string }
 }
@@ -58,13 +63,42 @@ async function markdownRequest<T>({
   }
 }
 
-export async function fetchMarkdownIndex(signal?: AbortSignal) {
+export async function fetchMarkdownIndex(signal?: AbortSignal): Promise<MarkdownIndexResult> {
   const data = await markdownRequest<MarkdownIndexResponse>({
     method: "GET",
     signal,
     errorMessage: "Unable to load markdown files",
   })
-  return data ?? { documents: [], folders: [] }
+  const dataset = Array.isArray(data?.documents)
+    ? data?.documents
+    : Array.isArray(data?.files)
+      ? data?.files
+      : []
+
+  const documents = dataset.filter(
+    (doc: Partial<MarkdownDocument>): doc is MarkdownDocument => {
+      return (
+        typeof doc?.id === "string" &&
+        typeof doc?.slug === "string" &&
+        typeof doc?.documentPath === "string" &&
+        typeof doc?.title === "string"
+      )
+    }
+  )
+
+  const rawFolders = Array.isArray(data?.folders) ? data.folders : []
+  const folders = rawFolders.filter(
+    (folder: Partial<MarkdownFolder>): folder is MarkdownFolder => {
+      return (
+        typeof folder?.id === "string" &&
+        typeof folder?.folderPath === "string" &&
+        typeof folder?.createdAt === "string" &&
+        typeof folder?.updatedAt === "string"
+      )
+    }
+  )
+
+  return { documents, folders }
 }
 
 export async function createMarkdownDocument(payload: {

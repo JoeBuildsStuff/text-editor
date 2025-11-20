@@ -171,6 +171,15 @@ When modifying the database schema:
 
 See `server/README.md` for detailed migration guidelines.
 
+### Working with the Sidebar Cache
+
+The sidebar tree loads its data through **TanStack Query**:
+
+- The `markdown-index` query wraps `/api/markdown` and normalizes the response in `fetchMarkdownIndex`.
+- `useMarkdownExplorer` exposes helper callbacks that optimistically edit the cached result with `queryClient.setQueryData` and then call `invalidateQueries(MARKDOWN_INDEX_QUERY_KEY)` to re-sync with the server.
+- When adding new sidebar mutations, wire them into this flow so the UI updates instantly and still refreshes from SQLite.
+- Prefer reading `documents`/`folders` from the query cache instead of maintaining separate React state—this keeps React Compiler happy and prevents the loading spinner from flashing.
+
 ### Adding New API Routes
 
 1. **Create route file**:

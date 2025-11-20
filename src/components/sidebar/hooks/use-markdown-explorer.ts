@@ -1,8 +1,9 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react"
+import { useCallback, useMemo, useState, useTransition } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   PointerSensor,
   type CollisionDetection,
@@ -36,6 +37,9 @@ import {
   updateMarkdownSortOrder,
 } from "@/components/sidebar/api/markdown-actions"
 
+const MARKDOWN_INDEX_QUERY_KEY = ["markdown-index"] as const
+type MarkdownIndexResult = Awaited<ReturnType<typeof fetchMarkdownIndex>>
+
 export type MarkdownExplorerResult = {
   isLoadingFiles: boolean
   filesError: string | null
@@ -50,11 +54,8 @@ export type MarkdownExplorerResult = {
 export function useMarkdownExplorer(): MarkdownExplorerResult {
   const pathname = usePathname()
   const router = useRouter()
+  const queryClient = useQueryClient()
 
-  const [documents, setDocuments] = useState<MarkdownDocument[]>([])
-  const [folders, setFolders] = useState<MarkdownFolder[]>([])
-  const [isLoadingFiles, setIsLoadingFiles] = useState(true)
-  const [filesError, setFilesError] = useState<string | null>(null)
   const [isActionPending, startActionTransition] = useTransition()
   const [openFolders, setOpenFolders] = useState<Set<string>>(new Set())
   const [renameDialogOpen, setRenameDialogOpen] = useState(false)
@@ -83,79 +84,52 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
     return nonRootCollisions.length ? nonRootCollisions : collisions
   }, [])
 
-  const loadDocuments = useCallback(
-    async ({
-      signal,
-      silent = false,
-    }: {
-      signal?: AbortSignal
-      silent?: boolean
-    } = {}) => {
-      if (signal?.aborted) {
-        return null
-      }
+  const {
+    data: markdownIndex,
+    error: markdownError,
+    isPending: isQueryPending,
+    refetch: refetchMarkdownIndex,
+  } = useQuery({
+    queryKey: MARKDOWN_INDEX_QUERY_KEY,
+    queryFn: ({ signal }) => fetchMarkdownIndex(signal),
+    refetchOnWindowFocus: false,
+    staleTime: 30_000,
+  })
 
-      if (!silent) {
-        setIsLoadingFiles(true)
-      }
-      setFilesError(null)
-
-      try {
-        const data = await fetchMarkdownIndex(signal)
-        const dataset = Array.isArray(data.documents)
-          ? data.documents
-          : Array.isArray(data.files)
-            ? data.files
-            : []
-
-        const parsedDocuments = dataset.filter(
-          (doc: Partial<MarkdownDocument>): doc is MarkdownDocument => {
-            return (
-              typeof doc?.id === "string" &&
-              typeof doc?.slug === "string" &&
-              typeof doc?.documentPath === "string" &&
-              typeof doc?.title === "string"
-            )
-          }
-        )
-
-        const rawFolders = Array.isArray(data.folders) ? data.folders : []
-        const parsedFolders = rawFolders.filter(
-          (folder: Partial<MarkdownFolder>): folder is MarkdownFolder => {
-            return (
-              typeof folder?.id === "string" &&
-              typeof folder?.folderPath === "string" &&
-              typeof folder?.createdAt === "string" &&
-              typeof folder?.updatedAt === "string"
-            )
-          }
-        )
-
-        setDocuments(parsedDocuments)
-        setFolders(parsedFolders)
-
-        return { documents: parsedDocuments, folders: parsedFolders }
-      } catch (error) {
-        if ((error as DOMException)?.name === "AbortError" || signal?.aborted) {
-          return null
-        }
-        console.error(error)
-        setFilesError(error instanceof Error ? error.message : "Something went wrong")
-        return null
-      } finally {
-        if (!signal?.aborted && !silent) {
-          setIsLoadingFiles(false)
-        }
-      }
-    },
-    []
+  const documents = useMemo(
+    () => markdownIndex?.documents ?? [],
+    [markdownIndex]
+  )
+  const folders = useMemo(
+    () => markdownIndex?.folders ?? [],
+    [markdownIndex]
   )
 
-  useEffect(() => {
-    const controller = new AbortController()
-    void loadDocuments({ signal: controller.signal })
-    return () => controller.abort()
-  }, [pathname, loadDocuments])
+  const setMarkdownIndex = useCallback(
+    (updater: (current: MarkdownIndexResult) => MarkdownIndexResult) => {
+      queryClient.setQueryData<MarkdownIndexResult>(MARKDOWN_INDEX_QUERY_KEY, (current) => {
+        const safeCurrent = current ?? { documents: [], folders: [] }
+        return updater(safeCurrent)
+      })
+    },
+    [queryClient]
+  )
+
+  const loadDocuments = useCallback(
+    async ({ silent = false }: { silent?: boolean } = {}) => {
+      if (silent) {
+        await queryClient.invalidateQueries({ queryKey: MARKDOWN_INDEX_QUERY_KEY })
+        return null
+      }
+
+      const result = await refetchMarkdownIndex()
+      return result.data ?? null
+    },
+    [queryClient, refetchMarkdownIndex]
+  )
+
+  const isLoadingFiles = isQueryPending && !markdownIndex
+  const filesError = markdownError instanceof Error ? markdownError.message : null
 
   const treeElements = useMemo(
     () => buildDocumentsTree(documents, folders),
@@ -214,8 +188,10 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
     })
   }, [])
 
-  useEffect(() => {
-    if (!selectedSlug || !treeElements.length) return
+  const autoOpenFolders = useMemo(() => {
+    if (!selectedSlug || !treeElements.length) {
+      return [] as string[]
+    }
 
     const findParentFolders = (
       elements: SidebarTreeElement[],
@@ -237,15 +213,17 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
       return null
     }
 
-    const parentFolders = findParentFolders(treeElements, selectedSlug)
-    if (parentFolders && parentFolders.length > 0) {
-      setOpenFolders((prev) => {
-        const next = new Set(prev)
-        parentFolders.forEach((folderId) => next.add(folderId))
-        return next
-      })
-    }
+    return findParentFolders(treeElements, selectedSlug) ?? []
   }, [selectedSlug, treeElements])
+
+  const derivedOpenFolders = useMemo(() => {
+    if (!autoOpenFolders.length) {
+      return openFolders
+    }
+    const next = new Set(openFolders)
+    autoOpenFolders.forEach((folderId) => next.add(folderId))
+    return next
+  }, [openFolders, autoOpenFolders])
 
   const createDocumentInPath = useCallback(
     async (folderPath?: string) => {
@@ -300,17 +278,17 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
       let removedIndex = -1
       let didRemove = false
 
-      setDocuments((prev) => {
-        const index = prev.findIndex((doc) => doc.id === documentId)
+      setMarkdownIndex((current) => {
+        const index = current.documents.findIndex((doc) => doc.id === documentId)
         if (index === -1) {
-          return prev
+          return current
         }
         removedIndex = index
-        removedDocument = prev[index]
+        removedDocument = current.documents[index]
         didRemove = true
-        const next = [...prev]
-        next.splice(index, 1)
-        return next
+        const nextDocuments = [...current.documents]
+        nextDocuments.splice(index, 1)
+        return { ...current, documents: nextDocuments }
       })
 
       const resolvedSlug = slug ?? removedDocument?.slug
@@ -323,15 +301,17 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
 
       const restoreDocument = () => {
         if (!didRemove || !removedDocument) return
-        setDocuments((prev) => {
-          if (prev.some((doc) => doc.id === documentId)) {
-            return prev
+        setMarkdownIndex((current) => {
+          if (current.documents.some((doc) => doc.id === documentId)) {
+            return current
           }
-          const next = [...prev]
+          const nextDocuments = [...current.documents]
           const insertIndex =
-            removedIndex >= 0 && removedIndex <= next.length ? removedIndex : next.length
-          next.splice(insertIndex, 0, removedDocument as MarkdownDocument)
-          return next
+            removedIndex >= 0 && removedIndex <= nextDocuments.length
+              ? removedIndex
+              : nextDocuments.length
+          nextDocuments.splice(insertIndex, 0, removedDocument as MarkdownDocument)
+          return { ...current, documents: nextDocuments }
         })
       }
 
@@ -346,7 +326,7 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
         throw error
       }
     },
-    [loadDocuments, router, selectedSlug]
+    [loadDocuments, router, selectedSlug, setMarkdownIndex]
   )
 
   const deleteFolderAtPath = useCallback(
@@ -355,35 +335,43 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
       const removedFolders: { folder: MarkdownFolder; index: number }[] = []
       const removedDocuments: { document: MarkdownDocument; index: number }[] = []
 
-      setFolders((prev) => {
-        let changed = false
-        const next = prev.filter((folder, index) => {
+      setMarkdownIndex((current) => {
+        let foldersChanged = false
+        const nextFolders: MarkdownFolder[] = []
+        current.folders.forEach((folder, index) => {
           const isTarget = folder.folderPath === folderPath
           const isNested = folderPrefix ? folder.folderPath.startsWith(folderPrefix) : false
           if (isTarget || isNested) {
             removedFolders.push({ folder, index })
-            changed = true
-            return false
+            foldersChanged = true
+            return
           }
-          return true
+          nextFolders.push(folder)
         })
-        return changed ? next : prev
-      })
 
-      setDocuments((prev) => {
-        let changed = false
-        const next = prev.filter((doc, index) => {
+        let documentsChanged = false
+        const nextDocuments: MarkdownDocument[] = []
+        current.documents.forEach((doc, index) => {
           const docPath = doc.documentPath ?? ""
           const shouldRemove =
             docPath === folderPath || (folderPrefix ? docPath.startsWith(folderPrefix) : false)
           if (shouldRemove) {
             removedDocuments.push({ document: doc, index })
-            changed = true
-            return false
+            documentsChanged = true
+            return
           }
-          return true
+          nextDocuments.push(doc)
         })
-        return changed ? next : prev
+
+        if (!foldersChanged && !documentsChanged) {
+          return current
+        }
+
+        return {
+          ...current,
+          folders: foldersChanged ? nextFolders : current.folders,
+          documents: documentsChanged ? nextDocuments : current.documents,
+        }
       })
 
       const removedSelectedDoc = Boolean(
@@ -397,33 +385,40 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
       }
 
       const restoreState = () => {
-        if (removedFolders.length) {
+        if (removedFolders.length || removedDocuments.length) {
           const foldersToRestore = [...removedFolders].sort((a, b) => a.index - b.index)
-          setFolders((prev) => {
-            const next = [...prev]
-            foldersToRestore.forEach(({ folder, index }) => {
-              if (next.some((item) => item.id === folder.id)) {
-                return
-              }
-              const insertIndex = index >= 0 && index <= next.length ? index : next.length
-              next.splice(insertIndex, 0, folder)
-            })
-            return next
-          })
-        }
-
-        if (removedDocuments.length) {
           const documentsToRestore = [...removedDocuments].sort((a, b) => a.index - b.index)
-          setDocuments((prev) => {
-            const next = [...prev]
-            documentsToRestore.forEach(({ document, index }) => {
-              if (next.some((item) => item.id === document.id)) {
-                return
-              }
-              const insertIndex = index >= 0 && index <= next.length ? index : next.length
-              next.splice(insertIndex, 0, document)
-            })
-            return next
+
+          setMarkdownIndex((current) => {
+            let nextFolders = current.folders
+            if (foldersToRestore.length) {
+              nextFolders = [...current.folders]
+              foldersToRestore.forEach(({ folder, index }) => {
+                if (nextFolders.some((item) => item.id === folder.id)) {
+                  return
+                }
+                const insertIndex = index >= 0 && index <= nextFolders.length ? index : nextFolders.length
+                nextFolders.splice(insertIndex, 0, folder)
+              })
+            }
+
+            let nextDocuments = current.documents
+            if (documentsToRestore.length) {
+              nextDocuments = [...current.documents]
+              documentsToRestore.forEach(({ document, index }) => {
+                if (nextDocuments.some((item) => item.id === document.id)) {
+                  return
+                }
+                const insertIndex = index >= 0 && index <= nextDocuments.length ? index : nextDocuments.length
+                nextDocuments.splice(insertIndex, 0, document)
+              })
+            }
+
+            if (nextFolders === current.folders && nextDocuments === current.documents) {
+              return current
+            }
+
+            return { ...current, folders: nextFolders, documents: nextDocuments }
           })
         }
       }
@@ -440,7 +435,7 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
         throw error
       }
     },
-    [loadDocuments, closeFolderPath, selectedSlug, router]
+    [loadDocuments, closeFolderPath, selectedSlug, router, setMarkdownIndex]
   )
 
   const moveDocumentToFolder = useCallback(
@@ -880,7 +875,7 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
   const treeProps: SidebarTreeProps = {
     elements: treeElements,
     selectedSlug,
-    openFolders,
+    openFolders: derivedOpenFolders,
     onToggleFolder: toggleFolder,
     isActionPending,
     onCreateDocument: triggerCreateDocument,
