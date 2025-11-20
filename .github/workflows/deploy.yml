@@ -58,17 +58,22 @@ jobs:
             echo "Disk usage before prune:"
             docker system df || true
 
-            echo "Pruning Docker build cache older than 7 days"
-            docker builder prune -af --filter "until=168h" || true
+            # For frequent deployments, aggressively clean unused build cache
+            # Each new build creates fresh cache, so old unused cache can be removed immediately
+            echo "Pruning all unused Docker build cache"
+            docker builder prune -af || true
 
-            echo "Pruning unused Docker images older than 7 days"
-            docker image prune -af --filter "until=168h" || true
+            # Keep only images from last 24 hours, remove older unused ones
+            echo "Pruning unused Docker images older than 24 hours"
+            docker image prune -af --filter "until=24h" || true
 
-            echo "Pruning stopped containers older than 7 days"
-            docker container prune -f --filter "until=168h" || true
+            # Clean up stopped containers (keep last hour for debugging)
+            echo "Pruning stopped containers older than 1 hour"
+            docker container prune -f --filter "until=1h" || true
 
-            echo "Pruning unused Docker volumes older than 30 days"
-            docker volume prune -f --filter "until=720h" || true
+            # Volumes are persistent data, only clean very old unused ones
+            echo "Pruning unused Docker volumes older than 7 days"
+            docker volume prune -f --filter "until=168h" || true
 
             echo "Disk usage after prune:"
             docker system df || true
