@@ -1,6 +1,7 @@
 "use client"
 
-import { useMemo, useRef, useCallback, useState, type ReactNode } from "react"
+import { useMemo, useRef, useCallback, type ReactNode } from "react"
+// import { useMemo, useRef, useCallback, useState, type ReactNode } from "react"
 import {
   DndContext,
   DragOverlay,
@@ -66,11 +67,11 @@ type TreeRenderOptions = {
   isNested?: boolean
 }
 
-type SourceGhostState = {
-  rect: { top: number; left: number; width: number; height: number }
-  label: string
-  kind: "folder" | "document"
-}
+// type SourceGhostState = {
+//   rect: { top: number; left: number; width: number; height: number }
+//   label: string
+//   kind: "folder" | "document"
+// }
 
 export function SidebarTree({
   elements,
@@ -93,7 +94,7 @@ export function SidebarTree({
   activeDragLabel,
 }: SidebarTreeProps) {
   const dropTargetRectRef = useRef<DOMRect | null>(null)
-  const [sourceGhost, setSourceGhost] = useState<SourceGhostState | null>(null)
+  // const [sourceGhost, setSourceGhost] = useState<SourceGhostState | null>(null)
 
   const applyDropSideEffects = useMemo(
     () =>
@@ -113,7 +114,7 @@ export function SidebarTree({
       dropTargetRectRef.current = null
 
       if (!targetRect) {
-        setSourceGhost(null)
+        // setSourceGhost(null)
         return
       }
 
@@ -141,7 +142,7 @@ export function SidebarTree({
       return new Promise<void>((resolve) => {
         const handleAnimationComplete = () => {
           cleanup?.()
-          setSourceGhost(null)
+          // setSourceGhost(null)
           resolve()
         }
 
@@ -155,22 +156,22 @@ export function SidebarTree({
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
       dropTargetRectRef.current = null
-      const data = event.active.data.current
-      const activeRect =
-        event.active.rect.current.initial ?? event.active.rect.current.translated ?? null
+      // const data = event.active.data.current
+      // const activeRect =
+      //   event.active.rect.current.initial ?? event.active.rect.current.translated ?? null
 
-      if (data && activeRect && (data.type === "folder" || data.type === "document")) {
-        setSourceGhost({
-          rect: {
-            top: activeRect.top,
-            left: activeRect.left,
-            width: activeRect.width,
-            height: activeRect.height,
-          },
-          label: data.label ?? (data.type === "folder" ? "Folder" : "Document"),
-          kind: data.type,
-        })
-      }
+      // if (data && activeRect && (data.type === "folder" || data.type === "document")) {
+      //   setSourceGhost({
+      //     rect: {
+      //       top: activeRect.top,
+      //       left: activeRect.left,
+      //       width: activeRect.width,
+      //       height: activeRect.height,
+      //     },
+      //     label: data.label ?? (data.type === "folder" ? "Folder" : "Document"),
+      //     kind: data.type,
+      //   })
+      // }
 
       onDragStart?.(event)
     },
@@ -183,7 +184,7 @@ export function SidebarTree({
         dropTargetRectRef.current = calculateDropTargetRect(event) ?? dropTargetRectRef.current
       } else {
         dropTargetRectRef.current = null
-        setSourceGhost(null)
+        // setSourceGhost(null)
       }
       onDragEnd?.(event)
     },
@@ -193,7 +194,7 @@ export function SidebarTree({
   const handleDragCancel = useCallback(
     (event: DragCancelEvent) => {
       dropTargetRectRef.current = null
-      setSourceGhost(null)
+      // setSourceGhost(null)
       onDragCancel?.(event)
     },
     [onDragCancel]
@@ -238,7 +239,7 @@ export function SidebarTree({
           </div>
         ) : null}
       </DragOverlay>
-      {sourceGhost ? <SourceGhostOverlay ghost={sourceGhost} /> : null}
+      {/* {sourceGhost ? <SourceGhostOverlay ghost={sourceGhost} /> : null} */}
     </DndContext>
   )
 }
@@ -309,7 +310,7 @@ function FolderTreeNode({
     listeners,
     setNodeRef: setSortableRef,
     transition,
-    isDragging,
+    // isDragging,
   } = useSortable({
     id: element.id,
     data: {
@@ -363,7 +364,7 @@ function FolderTreeNode({
         className={cn(
           "rounded-sm relative",
           dropPosition === "middle" && "bg-muted/40",
-          isDragging && "opacity-25"
+          isDraggingSelf && "opacity-0 pointer-events-none h-0 overflow-hidden"
         )}
       >
         {dropPosition === "top" && <DropGapIndicator />}
@@ -474,7 +475,7 @@ function DocumentTreeNode({
     listeners,
     setNodeRef,
     transition,
-    isDragging,
+    // isDragging,
   } = useSortable({
     id: element.id,
     data: {
@@ -508,7 +509,11 @@ function DocumentTreeNode({
     transition,
   }
 
-  const hiddenWhileDragging = cn("transition-opacity", isDragging && "opacity-25")
+  // const hiddenWhileDragging = cn("transition-opacity", isDragging && "opacity-25")
+  const hiddenWhileDragging = cn(
+    "transition-opacity",
+    isDraggingSelf && "opacity-0 pointer-events-none h-0 overflow-hidden"
+  )
   const isSelected = options.selectedSlug === element.id
 
   const fileButton = (
@@ -559,7 +564,14 @@ function DocumentTreeNode({
   )
 
   const draggableContent = (
-    <div ref={setNodeRef} style={dragStyle} className="relative">
+    <div
+      ref={setNodeRef}
+      style={dragStyle}
+      className={cn(
+        "relative",
+        isDraggingSelf && "h-0 overflow-hidden"
+      )}
+    >
       {dropPosition === "top" && <DropGapIndicator />}
       <div className={hiddenWhileDragging}>{menuContent}</div>
       {dropPosition === "bottom" && <DropGapIndicator />}
@@ -595,26 +607,26 @@ function DropGapIndicator() {
   )
 }
 
-function SourceGhostOverlay({ ghost }: { ghost: SourceGhostState }) {
-  const Icon = ghost.kind === "folder" ? FolderIcon : FileIcon
-
-  return (
-    <div
-      className="pointer-events-none fixed z-[998]"
-      style={{
-        top: ghost.rect.top,
-        left: ghost.rect.left,
-        width: ghost.rect.width,
-        height: ghost.rect.height,
-      }}
-    >
-      <div className="flex h-full items-center rounded-md border border-dashed border-muted-foreground/40 bg-muted/70 px-2 py-1 text-sm text-muted-foreground">
-        <Icon className="w-3.5 h-3.5 mr-2 flex-none text-muted-foreground" />
-        <span className="truncate">{ghost.label}</span>
-      </div>
-    </div>
-  )
-}
+// function SourceGhostOverlay({ ghost }: { ghost: SourceGhostState }) {
+//   const Icon = ghost.kind === "folder" ? FolderIcon : FileIcon
+//
+//   return (
+//     <div
+//       className="pointer-events-none fixed z-[998]"
+//       style={{
+//         top: ghost.rect.top,
+//         left: ghost.rect.left,
+//         width: ghost.rect.width,
+//         height: ghost.rect.height,
+//       }}
+//     >
+//       <div className="flex h-full items-center rounded-md border border-dashed border-muted-foreground/40 bg-muted/70 px-2 py-1 text-sm text-muted-foreground">
+//         <Icon className="w-3.5 h-3.5 mr-2 flex-none text-muted-foreground" />
+//         <span className="truncate">{ghost.label}</span>
+//       </div>
+//     </div>
+//   )
+// }
 
 function RootDropZone({ children }: { children: ReactNode }) {
   const { setNodeRef, isOver } = useDroppable({
