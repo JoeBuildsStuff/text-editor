@@ -324,10 +324,35 @@ function FolderTreeNode({
   const { active, over } = useDndContext()
   const isOverContext = over?.id === element.id
   const isDraggingSelf = active?.id === element.id
+  const isOverParent = over?.id === SIDEBAR_TREE_ROOT_DROPPABLE_ID || over?.id === `folder:${element.folderPath}`
 
   let dropPosition: "top" | "bottom" | "middle" | null = null
 
-  if (isOverContext && !isDraggingSelf && active && over) {
+  // When dragging this item, calculate drop position based on cursor relative to adjacent siblings
+  // or parent container to show indicator at original position
+  if (isDraggingSelf && active && (isOverParent || isOverContext)) {
+    const activeRect = active.rect.current.translated
+    if (activeRect && over?.rect) {
+      const overRect = over.rect
+      const activeCenterY = activeRect.top + activeRect.height / 2
+      const overTop = overRect.top
+      const overHeight = overRect.height || 40 // fallback height if 0
+      const relativeY = overHeight > 0 ? (activeCenterY - overTop) / overHeight : 0.5
+
+      if (relativeY < 0.33) {
+        dropPosition = "top"
+      } else if (relativeY > 0.67) {
+        dropPosition = "bottom"
+      } else {
+        dropPosition = "middle"
+      }
+    } else if (activeRect) {
+      // Fallback: use index-based logic when rects aren't available
+      if (activeIndex === -1) dropPosition = "middle"
+      else if (activeIndex < index) dropPosition = "bottom"
+      else dropPosition = "top"
+    }
+  } else if (isOverContext && active && over) {
     const activeRect = active.rect.current.translated
     const overRect = over.rect
 
@@ -364,10 +389,12 @@ function FolderTreeNode({
         className={cn(
           "rounded-sm relative",
           dropPosition === "middle" && "bg-muted/40",
+          // Always fully collapse when dragging self - indicator will appear on adjacent items
           isDraggingSelf && "opacity-0 pointer-events-none h-0 overflow-hidden"
         )}
       >
-        {dropPosition === "top" && <DropGapIndicator />}
+        {/* Don't show indicator on the item being dragged itself - only on other items */}
+        {dropPosition === "top" && !isDraggingSelf && <DropGapIndicator />}
         <div ref={setNodeRef}>
           <Collapsible
             open={isOpen}
@@ -413,7 +440,8 @@ function FolderTreeNode({
             </SidebarMenuItem>
           </Collapsible>
         </div>
-        {dropPosition === "bottom" && <DropGapIndicator />}
+        {/* Don't show indicator on the item being dragged itself - only on other items */}
+        {dropPosition === "bottom" && !isDraggingSelf && <DropGapIndicator />}
       </div>
       <ContextMenuContent>
         <ContextMenuItem
@@ -491,10 +519,40 @@ function DocumentTreeNode({
   const { active, over } = useDndContext()
   const isOver = over?.id === element.id
   const isDraggingSelf = active?.id === element.id
+  // Check if over parent folder or root
+  const isOverParent = over?.data.current?.type === "folder" && 
+    (over?.data.current?.folderPath === currentFolderPath || 
+     (!over?.data.current?.folderPath && !currentFolderPath))
 
   let dropPosition: "top" | "bottom" | null = null
 
-  if (isOver && !isDraggingSelf) {
+  // When dragging this document, calculate drop position to show indicator at original position
+  // Check if hovering over parent or original position
+  if (isDraggingSelf && active && (isOver || isOverParent)) {
+    const activeRect = active.rect.current.translated
+    if (activeRect && over?.rect) {
+      const overRect = over.rect
+      const activeCenterY = activeRect.top + activeRect.height / 2
+      const overTop = overRect.top
+      const overHeight = overRect.height || 40 // fallback height if 0
+      const relativeY = overHeight > 0 ? (activeCenterY - overTop) / overHeight : 0.5
+
+      if (relativeY < 0.5) {
+        dropPosition = "top"
+      } else {
+        dropPosition = "bottom"
+      }
+    } else {
+      // Fallback logic when dragging self
+      if (activeIndex === -1) {
+        dropPosition = "bottom"
+      } else if (activeIndex < index) {
+        dropPosition = "bottom"
+      } else {
+        dropPosition = "top"
+      }
+    }
+  } else if (isOver) {
     if (activeIndex === -1) {
       dropPosition = "bottom"
     } else if (activeIndex < index) {
@@ -512,6 +570,7 @@ function DocumentTreeNode({
   // const hiddenWhileDragging = cn("transition-opacity", isDragging && "opacity-25")
   const hiddenWhileDragging = cn(
     "transition-opacity",
+    // Always fully collapse when dragging self - indicator will appear on adjacent items
     isDraggingSelf && "opacity-0 pointer-events-none h-0 overflow-hidden"
   )
   const isSelected = options.selectedSlug === element.id
@@ -569,12 +628,14 @@ function DocumentTreeNode({
       style={dragStyle}
       className={cn(
         "relative",
+        // Always fully collapse when dragging self - indicator will appear on adjacent items
         isDraggingSelf && "h-0 overflow-hidden"
       )}
     >
-      {dropPosition === "top" && <DropGapIndicator />}
+      {/* Don't show indicator on the item being dragged itself - only on other items */}
+      {dropPosition === "top" && !isDraggingSelf && <DropGapIndicator />}
       <div className={hiddenWhileDragging}>{menuContent}</div>
-      {dropPosition === "bottom" && <DropGapIndicator />}
+      {dropPosition === "bottom" && !isDraggingSelf && <DropGapIndicator />}
     </div>
   )
 
