@@ -87,7 +87,11 @@ export function buildDocumentsTree(
   folders.forEach((folder) => {
     const segments = folder.folderPath.split("/").filter(Boolean)
     const node = ensureFolderNode(segments)
-    node.sortOrder = folder.sortOrder
+    const hasNumericSortOrder = typeof folder.sortOrder === "number"
+    if (!hasNumericSortOrder && process.env.NODE_ENV !== "production") {
+      console.warn("Folder missing sort order", folder)
+    }
+    node.sortOrder = hasNumericSortOrder ? folder.sortOrder : 0
   })
 
   files.forEach((file) => {

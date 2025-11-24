@@ -693,7 +693,10 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
         }
       }
 
-      if (typeof activeData.sortOrder === "number" && typeof overData.sortOrder === "number") {
+      const isSortableActive = activeData.type === "document" || activeData.type === "folder"
+      const isSortableOver = overData.type === "document" || overData.type === "folder"
+
+      if (isSortableActive && isSortableOver) {
         const activeId = active.id as string
         const overId = over.id as string
 

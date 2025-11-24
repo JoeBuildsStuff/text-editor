@@ -69,6 +69,7 @@ function initializeSchema(database: Database.Database) {
           document_path TEXT NOT NULL,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL,
+          sort_order REAL NOT NULL DEFAULT 0,
           UNIQUE(user_id, document_path)
         );
         
@@ -83,6 +84,7 @@ function initializeSchema(database: Database.Database) {
           folder_path TEXT NOT NULL,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL,
+          sort_order REAL NOT NULL DEFAULT 0,
           UNIQUE(user_id, folder_path)
         );
         
@@ -110,6 +112,7 @@ function initializeSchema(database: Database.Database) {
         document_path TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
+        sort_order REAL NOT NULL DEFAULT 0,
         UNIQUE(user_id, document_path)
       );
 
@@ -119,6 +122,7 @@ function initializeSchema(database: Database.Database) {
         folder_path TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
+        sort_order REAL NOT NULL DEFAULT 0,
         UNIQUE(user_id, folder_path)
       );
 
@@ -139,19 +143,23 @@ function initializeSchema(database: Database.Database) {
       database.exec(`
         CREATE TABLE IF NOT EXISTS documents_new (
           id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
           title TEXT NOT NULL,
-          document_path TEXT NOT NULL UNIQUE,
+          document_path TEXT NOT NULL,
           created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL
+          updated_at TEXT NOT NULL,
+          sort_order REAL NOT NULL DEFAULT 0,
+          UNIQUE(user_id, document_path)
         );
         
-        INSERT INTO documents_new (id, title, document_path, created_at, updated_at)
-        SELECT id, title, document_path, created_at, updated_at FROM documents;
+        INSERT INTO documents_new (id, user_id, title, document_path, created_at, updated_at, sort_order)
+        SELECT id, user_id, title, document_path, created_at, updated_at, COALESCE(sort_order, 0) FROM documents;
         
         DROP TABLE documents;
         ALTER TABLE documents_new RENAME TO documents;
         
-        CREATE INDEX IF NOT EXISTS idx_documents_path ON documents(document_path);
+        CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id);
+        CREATE INDEX IF NOT EXISTS idx_documents_path ON documents(user_id, document_path);
       `)
     }
   } catch (error) {

@@ -305,6 +305,8 @@ function FolderTreeNode({
     },
   })
 
+  const folderSortOrder = typeof element.sortOrder === "number" ? element.sortOrder : 0
+
   const {
     attributes,
     listeners,
@@ -316,7 +318,7 @@ function FolderTreeNode({
     data: {
       type: "folder",
       folderPath,
-      sortOrder: element.sortOrder,
+      sortOrder: folderSortOrder,
       label: element.name,
     },
   })
@@ -499,6 +501,8 @@ function DocumentTreeNode({
   folderSegments.pop()
   const currentFolderPath = folderSegments.join("/") || undefined
 
+  const documentSortOrder = typeof element.sortOrder === "number" ? element.sortOrder : 0
+
   const {
     attributes,
     listeners,
@@ -513,7 +517,7 @@ function DocumentTreeNode({
       slug: element.id,
       currentFolderPath,
       label: element.name,
-      sortOrder: element.sortOrder,
+      sortOrder: documentSortOrder,
     },
   })
 
