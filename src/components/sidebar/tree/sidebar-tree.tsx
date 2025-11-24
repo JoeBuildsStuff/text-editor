@@ -324,9 +324,18 @@ function FolderTreeNode({
   })
 
   const { active, over } = useDndContext()
-  const isOverContext = over?.id === element.id
+  const isOverContext = over?.id === element.id || over?.id === `folder:${element.id}`
   const isDraggingSelf = active?.id === element.id
-  const isOverParent = over?.id === SIDEBAR_TREE_ROOT_DROPPABLE_ID || over?.id === `folder:${element.folderPath}`
+  // Consider hovering the parent droppable (root or the parent folder's droppable)
+  const parentFolderPath = (element.folderPath?.split("/").slice(0, -1).join("/") || undefined) as
+    | string
+    | undefined
+  const isOverParent =
+    // Hovering root droppable and this folder is at root
+    (over?.id === SIDEBAR_TREE_ROOT_DROPPABLE_ID && !parentFolderPath) ||
+    // Hovering a folder droppable whose folderPath matches our parent path
+    (over?.data.current?.type === "folder" &&
+      over?.data.current?.folderPath === parentFolderPath)
 
   let dropPosition: "top" | "bottom" | "middle" | null = null
 

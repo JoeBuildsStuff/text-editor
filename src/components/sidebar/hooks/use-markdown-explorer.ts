@@ -698,23 +698,35 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
 
       if (isSortableActive && isSortableOver) {
         const activeId = active.id as string
-        const overId = over.id as string
+        const rawOverId = over.id as string
+        // Normalize folder droppable IDs (e.g., "folder:<id>") to the underlying sortable element ID
+        let overId = rawOverId
+        let overElementForFolder: SidebarTreeElement | null = null
+        if (rawOverId.startsWith("folder:")) {
+          // Try to find the folder by its path from droppable data
+          overElementForFolder = findFolderByPath(treeElements, overData.folderPath)
+          if (overElementForFolder) {
+            overId = overElementForFolder.id
+          }
+        }
 
         if (activeId !== overId) {
           const activeContext = findContext(treeElements, activeId)
           const overContext = findContext(treeElements, overId)
 
-          if (activeContext && overContext) {
+          if (activeContext && (overContext || overElementForFolder)) {
             const isOverFolder = overData.type === "folder"
 
             if (isOverFolder && isMiddleZone) {
               // handled below
             } else {
-              const siblings = overContext.siblings
+              const resolvedOverContext = overContext ?? findContext(treeElements, overId)
+              if (!resolvedOverContext) return
+              const siblings = resolvedOverContext.siblings
               const overIndex = siblings.findIndex((x) => x.id === overId)
 
               if (overIndex !== -1) {
-                if (activeContext.siblings === overContext.siblings) {
+                if (activeContext.siblings === resolvedOverContext.siblings) {
                   const oldIndex = activeContext.siblings.findIndex((x) => x.id === activeId)
                   if (oldIndex === -1) {
                     return
@@ -760,7 +772,7 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
                     Promise.all([sourcePromise, targetPromise]).then(() => {
                       triggerMoveDocument(
                         activeData.documentId,
-                        overContext.parent?.folderPath,
+                        resolvedOverContext.parent?.folderPath,
                         activeData.label,
                         nextSortOrder
                       )
