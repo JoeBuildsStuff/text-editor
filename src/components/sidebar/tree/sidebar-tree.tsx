@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useRef, useCallback, type ReactNode } from "react"
+import { useMemo, useRef, useCallback, useEffect, type ReactNode } from "react"
 // import { useMemo, useRef, useCallback, useState, type ReactNode } from "react"
 import {
   DndContext,
@@ -389,6 +389,13 @@ function FolderTreeNode({
     }
   }
 
+  // Auto-expand folder on hover during drag, so we can show inner drop indicator
+  useEffect(() => {
+    if (isOverContext && !isOpen) {
+      options.onToggleFolder(element.id)
+    }
+  }, [isOverContext, isOpen, options, element.id])
+
   const style = {
     transform: undefined,
     transition,
@@ -441,6 +448,11 @@ function FolderTreeNode({
                 </CollapsibleTrigger>
               </ContextMenuTrigger>
               <CollapsibleContent>
+                {dropPosition === "middle" && (
+                  <div className="pl-6">
+                    <DropGapIndicator />
+                  </div>
+                )}
                 <SidebarMenuSub className="mr-0! pr-0!">
                   <SidebarMenuSubItem>
                     <SidebarTreeNodes
