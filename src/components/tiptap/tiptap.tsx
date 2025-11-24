@@ -145,6 +145,26 @@ const Tiptap = ({
       }
     },
     editorProps: {
+      attributes: {
+        class: [
+          "prose",
+          "mx-auto",
+          "focus:outline-none",
+          "dark:prose-invert",
+          // INLINE CODE STYLING
+          "prose-code:before:content-none",
+          "prose-code:after:content-none",
+          "prose-code:bg-muted",
+          "prose-code:px-2.5",
+          "prose-code:py-1",
+          "prose-code:rounded-sm",
+          // CODE BLOCK FIX — remove inline styles leaking into blocks
+          "[&_pre_code]:!bg-transparent",
+          "[&_pre_code]:!px-0",
+          "[&_pre_code]:!py-0",
+          "[&_pre_code]:!rounded-none",
+        ].join(" "),
+      },
       handleKeyDown: (_view, event) => {
         // Handle Cmd+K (or Ctrl+K) for link
         if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
