@@ -118,3 +118,26 @@ export function buildDocumentsTree(
   const result = root.children ?? []
   return sortTree(result)
 }
+
+// Compute a sort order key between two neighbors.
+// - If both neighbors exist, return the midpoint.
+// - If only prev exists, space forward by 1000.
+// - If only next exists, space backward by halving.
+// - If neither exists, default to 0.
+export function computeSortOrderBetween(prev?: number, next?: number): number {
+  if (typeof prev === "number" && typeof next === "number") {
+    // If the gap is too small, fall back to midpoint (still), and rely on occasional resequencing upstream.
+    const gap = next - prev
+    if (!Number.isFinite(gap) || gap <= 0) {
+      return prev + 0.5 // degenerate case; caller should re-space when detected
+    }
+    return prev + gap / 2
+  }
+  if (typeof prev === "number") {
+    return prev + 1000
+  }
+  if (typeof next === "number") {
+    return next / 2
+  }
+  return 0
+}

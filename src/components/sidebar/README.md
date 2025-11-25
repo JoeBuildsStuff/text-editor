@@ -1,67 +1,62 @@
 # Sidebar module
 
-This folder encapsulates the interactive markdown explorer that powers the left-hand sidebar in the app. The sidebar lets users browse, create, rename, delete, and reorder markdown documents/folders while keeping the server state in sync.
+This folder encapsulates the interactive markdown explorer that powers the left-hand sidebar in the app. The sidebar lets users browse, create, rename, delete, and reorder markdown documents and folders while keeping the server state in sync.
 
-## High-level flow
+## High-level Flow
 
-1. `AppSidebar` wires UI primitives from `@/components/ui/sidebar` with the sidebar-specific logic that comes from the `useMarkdownExplorer` hook. It renders the action buttons, the tree view, and the `RenameDialog`.
-2. `useMarkdownExplorer` is the only place that manages sidebar state: it performs queries/mutations, derives the tree structure, tracks which folders are open, controls drag-and-drop, and exposes handler props for the presentation layer.
-3. `SidebarTree` renders the tree UI. It is a pure component that receives everything it needs as props and focuses on rendering, keyboard interactions, and DnD affordances.
-4. `tree-utils.ts` and `tree-types.ts` define the serializable tree structure plus helpers for building routes (`buildDocumentsPath`) and normalizing/sorting documents and folders.
-5. `api/markdown-actions.ts` is the thin client around `/api/markdown` with typed helpers for fetching the index or mutating (create/delete/move/rename/update sort order).
+1. `AppSidebar` wires UI primitives from `@/components/ui/sidebar` with the sidebar-specific logic from `useMarkdownExplorer`. It renders action buttons, the tree view, loading/error states, the Terminal link, and the `RenameDialog`.
+2. `useMarkdownExplorer` is the single source of truth for sidebar state: it performs queries/mutations, derives the tree structure, tracks open folders, controls drag-and-drop with optimistic updates, manages the rename dialog, and exposes handler props for the presentation layer.
+3. `SidebarTree` renders the tree UI. It is presentation-only and receives everything via props. It focuses on rendering, keyboard interactions, context menus, visual drag feedback, and DnD affordances including gap indicators.
+4. `tree-utils.ts` and `tree-types.ts` define the serializable tree structure plus helpers for building routes (`buildDocumentsPath`) and normalizing/sorting documents and folders with deterministic ordering.
+5. `api/markdown-actions.ts` is the thin client around `/api/markdown` with typed helpers for fetching the index or mutating (create/delete/move/rename/update sort order), including error handling and response validation.
 
-## Key files
+## Key Files
 
 | File | Responsibility |
 | --- | --- |
-| `app-sidebar.tsx` | Container component that renders the sidebar chrome, action buttons, tree, footer, and rename dialog. It receives the entire explorer state from the hook. |
-| `app-sidebar-logo.tsx` | Simple header block that renders the app brand icon/text using the shared sidebar UI primitives. |
-| `hooks/use-markdown-explorer.ts` | Core hook that combines React Query, router interactions, drag-and-drop logic, optimistic updates, rename dialog state, and helpers for CRUD actions. |
-| `tree/sidebar-tree.tsx` | Presentation-only tree view built on `@dnd-kit` and the sidebar UI toolkit. |
-| `tree/tree-utils.ts` | Builds a nested `SidebarTreeElement[]` out of flat documents/folders and provides deterministic sorting + `/documents/:slug` path helpers. |
-| `api/markdown-actions.ts` | Fetch/ mutate helpers that talk to `/api/markdown` using JSON payloads and throw typed errors for the hook to surface. |
-| `rename-dialog.tsx` | Generic dialog that `useMarkdownExplorer` controls to rename either folders or documents. |
+| `app-sidebar.tsx` | Container component that renders the sidebar chrome, action buttons (New Document, Terminal link), tree, loading/error states, footer with UserMenu, and rename dialog. Receives the explorer state from the hook. |
+| `app-sidebar-logo.tsx` | Simple header block that renders the app brand icon/text ("Text Editor" by "Joe Builds Stuff"). |
+| `hooks/use-markdown-explorer.ts` | Core hook that combines React Query, Next.js router interactions, drag-and-drop logic with collision detection, optimistic updates with rollback, rename dialog state, toast notifications, auto-folder opening, and helpers for CRUD actions. |
+| `tree/sidebar-tree.tsx` | Presentation-only tree view built on `@dnd-kit`. Handles context menus, drag overlays, drop position indicators, and visual gap indicators while dragging. |
+| `tree/dnd-utils.ts` | Centralized DnD helpers: folder droppable ID helpers, shared drop-zone math with thresholds, and sortable-id resolution. Exposes `TOP_BOUND = 0.25` and `BOTTOM_BOUND = 0.75` for folder drop zones. |
+| `tree/tree-utils.ts` | Builds a nested `SidebarTreeElement[]` out of flat documents/folders and provides deterministic sorting (sortOrder first, then alphabetical) + `/documents/:slug` path helpers. Recursively sorts nested children. |
+| `api/markdown-actions.ts` | Fetch/mutate helpers that talk to `/api/markdown` using JSON payloads, include AbortSignal support, validate responses with type guards, extract error messages, and throw typed errors. |
+| `rename-dialog.tsx` | Generic dialog that `useMarkdownExplorer` controls to rename either folders or documents. Supports Enter to submit and Escape to cancel, with simple validation. |
 
-## `useMarkdownExplorer` responsibilities
+## `useMarkdownExplorer` Responsibilities
 
-The hook is designed as a single source of truth for sidebar behavior:
+The hook centralizes sidebar behavior:
 
-- **Data fetching** – Uses `useQuery` from TanStack Query with key `['markdown-index']` (`MARKDOWN_INDEX_QUERY_KEY`) to load the document/folder index, keep it cached for 30s, and expose loading/error flags.
-- **Derived data** – Memoizes the active documents/folders arrays, builds the tree via `buildDocumentsTree`, and decodes the current slug from the URL (`/documents/...`).
-- **Navigation helpers** – `navigateToSlug` pushes the derived document slug through Next.js router while `buildDocumentsPath` centralizes encoding.
-- **Folder state** – Tracks which folders are open, auto-opens folder paths for the currently selected document, and exposes `toggleFolder`, `openFolderPath`, and `closeFolderPath` helpers.
-- **Creation helpers** – `createDocumentInPath` and `createFolderInPath` call the API helpers, optimistically expand parent folders, refresh the query silently, and toast the outcome. Exposed to the UI via `createDocument`/`createFolder`.
-- **Deletion helpers** – `deleteDocumentById` and `deleteFolderAtPath` optimistically update the cached index, reset the active route if needed, and roll back on failure.
-- **Drag & drop** – Sets up DnD sensors, collision detection, and exposes `onDragStart/onDragEnd/onDragCancel`. It also includes logic to reassign sort orders and call `moveMarkdownDocument` or `updateMarkdownSortOrder` as items rearrange.
-- **Rename dialog state** – Tracks whether the dialog is open, what entity is being renamed, the proposed name, and supplies handlers to `RenameDialog`. Submissions hit either `renameMarkdownDocument` or `renameMarkdownFolder` then refetch the index.
+- Data fetching – Uses TanStack Query (`['markdown-index']`) with `staleTime: 30_000`, no refetch on focus, and exposes loading/error flags. `loadDocuments({ silent: true })` refreshes cache without visible loading states.
+- Derived data – Memoizes `documents` and `folders`, builds the tree via `buildDocumentsTree`, and derives `selectedSlug` from the URL.
+- Navigation – `navigateToSlug` pushes via Next.js router while `buildDocumentsPath` centralizes encoding/decoding. After rename, URLs update to match new slug.
+- Folder state – Tracks open folder IDs in a `Set<string>`, auto-opens the path of the selected document (`autoOpenFolders`), and merges with manual opens. Provides `toggleFolder`, `openFolderPath`, and `closeFolderPath`.
+- Action state – Uses `useTransition` to serialize actions and disable controls while pending.
+- Create helpers – `createDocumentInPath` and `createFolderInPath` call the API, optimistically expand parents, silently refresh the index, navigate to the new document (for docs), and toast success.
+- Delete helpers – Optimistically remove, with rollback on failure. Deleting a selected document clears selection, then restores it on error.
+- Rename helpers – Opens a shared dialog for folders/documents and performs the mutations with optimistic navigation for documents.
+- DnD glue – Provides sensors, collision detection that deprioritizes the root droppable, drag start/end/cancel handlers, and an `activeDragLabel` used by the overlay and gap indicators.
+- Sort order – Uses `computeSortOrderBetween` to assign fractional sort orders when dropping between items and resequences sparingly as a fallback.
 
-All of the above is exposed as the `treeProps`, `createDocument`, `createFolder`, and `renameDialogProps` consumed by `AppSidebar`.
+## Drag and Drop Behavior
 
-## Tree rendering & drag-and-drop
+- Zones and thresholds
+  - Folders have three zones: `top`, `middle`, `bottom` determined by `getDropPosition` with `TOP_BOUND = 0.25` and `BOTTOM_BOUND = 0.75`.
+  - Documents use a simple 50/50 split with no `middle` zone; only `top` or `bottom` is valid when hovering a document.
+- Gap indicators
+  - A dashed "gap" placeholder renders between items when hovering `top` or `bottom` of a target. It includes an icon (file/folder) and the `activeDragLabel`.
+  - Hovering the `middle` of a folder highlights the folder row and shows an inner placeholder inside the folder content area to indicate "drop into this folder".
+  - While dragging the current item, the source row collapses (`opacity-0 pointer-events-none h-0 overflow-hidden`) so indicators remain readable.
+- Root drop zone
+  - The root list is a droppable (`SIDEBAR_TREE_ROOT_DROPPABLE_ID`) that subtly highlights when hovered. Collision detection filters out root when any non-root candidates are present.
+- Drop animation
+  - `sidebar-tree.tsx` computes a target rect (`calculateDropTargetRect`) for the final position and animates the drag overlay to that rect using `defaultDropAnimationSideEffects` for a smooth snap.
+- Sort order assignment
+  - When dropping between siblings, the hook computes a new order via `computeSortOrderBetween(prev, next)` and updates only the moved item. Rarely, it resequences all siblings to coarse steps of 1000.
 
-`SidebarTree` couples the explorer data with the shared sidebar menu primitives:
+## Developer Notes
 
-- Wraps the tree with `DndContext`, `SortableContext`, and drop targets defined per folder/document (plus a root droppable) so that the hook can respond to drag callbacks.
-- Each folder/document node wires the drag listeners and displays visual cues (drop indicators, muted overlays) and a context menu with create/rename/delete affordances. The component never mutates data directly—it raises events (e.g. `onDeleteDocument`) back to the hook.
-- Nested children render recursively inside `Collapsible` wrappers, which are controlled via the `openFolders` Set that is passed in from the hook.
-- The drag overlay for the active document label is rendered via the `activeDragLabel` string maintained in the hook.
+- Adjust folder hover sensitivity by changing `TOP_BOUND` and `BOTTOM_BOUND` in `tree/dnd-utils.ts`.
+- `resolveSortableId` and `getDropPosition` are shared helpers to keep drop logic and visuals consistent between the tree component and the hook.
+- If drag visuals or behavior drift, update both `use-markdown-explorer.ts` and `sidebar-tree.tsx` together—they intentionally share the same math.
 
-## API contract
-
-All CRUD operations ultimately go through `/api/markdown` and the helpers defined in `api/markdown-actions.ts`:
-
-- `fetchMarkdownIndex` (GET) – returns `{ documents: MarkdownDocument[], folders: MarkdownFolder[] }` after validating the payload.
-- `createMarkdownDocument` / `createMarkdownFolder` (POST) – create new entries under an optional folder path.
-- `deleteMarkdownDocument` / `deleteMarkdownFolder` (DELETE) – remove entities; folder deletes cascade to nested items.
-- `updateMarkdownSortOrder`, `moveMarkdownDocument`, `renameMarkdownFolder`, `renameMarkdownDocument` (PATCH) – update ordering, location, or labels. Errors from the endpoint bubble up so the hook can toast them.
-
-Because the hook always mutates the React Query cache first, the UI remains responsive even before the server confirms the mutation. After each mutation the hook either invalidates (`loadDocuments({ silent: true })`) or explicitly refetches the index to stay consistent.
-
-## Adding new functionality
-
-- **New bulk actions** – Extend the hook with another helper that calls a new API function, update `treeProps` with the callback, and add UI affordances in `SidebarTree` or `AppSidebar`.
-- **Extra metadata in tree** – Augment `SidebarTreeElement` in `tree-types.ts`, make sure `buildDocumentsTree` populates it, and thread the data through the hook so the tree can display it.
-- **Different storage backend** – Update `/api/markdown` implementation, but keep the same API surface so the client helpers continue to work untouched.
-- **Testing** – Since all core logic lives in `useMarkdownExplorer`, you can unit-test most behaviors by mocking the API helpers and TanStack Query layer.
-
-Keeping the data flow centralized in the hook and feeding serializable props into the tree makes it easy to reason about the sidebar and introduce new behaviors without scattering state across multiple components.

@@ -22,13 +22,13 @@ export type DocumentRecord = BaseRecord & {
   kind: "document"
   title: string
   documentPath: string
-  sortOrder?: number
+  sortOrder: number
 }
 
 export type FolderRecord = BaseRecord & {
   kind: "folder"
   folderPath: string
-  sortOrder?: number
+  sortOrder: number
 }
 
 export type MetadataRecord = DocumentRecord | FolderRecord
@@ -274,7 +274,7 @@ export async function listMarkdownItems({ includeContent = true, userId }: ListO
     folderPath: row.folder_path,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    sortOrder: row.sort_order,
+    sortOrder: row.sort_order ?? 0,
   }))
 
   return {
@@ -519,6 +519,7 @@ export async function createFolder(folderPathInput: string, userId: string) {
       folder_path: string
       created_at: string
       updated_at: string
+      sort_order: number
     }
 
   return {
@@ -527,6 +528,7 @@ export async function createFolder(folderPathInput: string, userId: string) {
     folderPath: created.folder_path,
     createdAt: created.created_at,
     updatedAt: created.updated_at,
+    sortOrder: created.sort_order,
   }
 }
 

@@ -15,7 +15,7 @@ import {
 } from "@dnd-kit/core"
 import { arrayMove } from "@dnd-kit/sortable"
 
-import { buildDocumentsPath, buildDocumentsTree } from "@/components/sidebar/tree/tree-utils"
+import { buildDocumentsPath, buildDocumentsTree, computeSortOrderBetween } from "@/components/sidebar/tree/tree-utils"
 import {
   DOCUMENTS_ROOT_ID,
   SIDEBAR_TREE_ROOT_DROPPABLE_ID,
@@ -23,6 +23,7 @@ import {
   type MarkdownFolder,
   type SidebarTreeElement,
 } from "@/components/sidebar/tree/tree-types"
+import { getDropPosition, resolveSortableId } from "@/components/sidebar/tree/dnd-utils"
 import type { SidebarTreeProps } from "@/components/sidebar/tree/sidebar-tree"
 import type { RenameDialogProps } from "@/components/sidebar/rename-dialog"
 import {
@@ -480,10 +481,43 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
   )
 
   const assignSortOrders = useCallback(
-    (items: SidebarTreeElement[], skipIds?: Set<string>) => {
+    (
+      items: SidebarTreeElement[],
+      options?: { onlyMoveId?: string; prevOrder?: SidebarTreeElement[]; skipIds?: Set<string> }
+    ) => {
       const assignments = new Map<string, number>()
       const updates: Promise<void>[] = []
 
+      const onlyMoveId = options?.onlyMoveId
+      const skipIds = options?.skipIds
+
+      if (onlyMoveId) {
+        const index = items.findIndex((x) => x.id === onlyMoveId)
+        if (index === -1) {
+          return { assignments, promise: Promise.resolve() }
+        }
+        const prev = index > 0 ? items[index - 1].sortOrder : undefined
+        const next = index < items.length - 1 ? items[index + 1].sortOrder : undefined
+        const nextSortOrder = computeSortOrderBetween(prev as number | undefined, next as number | undefined)
+        assignments.set(onlyMoveId, nextSortOrder)
+
+        const moved = items[index]
+        const dbId =
+          moved.kind === "document" ? moved.documentId : getFolderIdByPath(moved.folderPath)
+
+        if (dbId && moved.sortOrder !== nextSortOrder && !skipIds?.has(onlyMoveId)) {
+          updates.push(updateSortOrder(dbId, moved.kind, nextSortOrder))
+        }
+
+        const promise =
+          updates.length > 0
+            ? Promise.allSettled(updates).then(() => undefined)
+            : Promise.resolve()
+
+        return { assignments, promise }
+      }
+
+      // Fallback: resequence everything (rarely)
       items.forEach((item, index) => {
         const nextSortOrder = (index + 1) * 1000
         assignments.set(item.id, nextSortOrder)
@@ -681,21 +715,19 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
 
       let isMiddleZone = false
       if (active.rect.current.translated && over.rect) {
-        const activeRect = active.rect.current.translated
-        const overRect = over.rect
-        const activeCenterY = activeRect.top + activeRect.height / 2
-        const overTop = overRect.top
-        const overHeight = overRect.height
-        const relativeY = (activeCenterY - overTop) / overHeight
-
-        if (relativeY >= 0.25 && relativeY <= 0.75) {
-          isMiddleZone = true
-        }
+        const activeRect = active.rect.current.translated ?? null
+        const overRect = over.rect ?? null
+        const zone = getDropPosition(activeRect, overRect)
+        isMiddleZone = zone === "middle"
       }
 
-      if (typeof activeData.sortOrder === "number" && typeof overData.sortOrder === "number") {
+      const isSortableActive = activeData.type === "document" || activeData.type === "folder"
+      const isSortableOver = overData.type === "document" || overData.type === "folder"
+
+      if (isSortableActive && isSortableOver) {
         const activeId = active.id as string
-        const overId = over.id as string
+        const overId = resolveSortableId(over.id as string, overData, treeElements)
+        if (!overId) return
 
         if (activeId !== overId) {
           const activeContext = findContext(treeElements, activeId)
@@ -707,17 +739,22 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
             if (isOverFolder && isMiddleZone) {
               // handled below
             } else {
-              const siblings = overContext.siblings
+              const resolvedOverContext = overContext ?? findContext(treeElements, overId)
+              if (!resolvedOverContext) return
+              const siblings = resolvedOverContext.siblings
               const overIndex = siblings.findIndex((x) => x.id === overId)
 
               if (overIndex !== -1) {
-                if (activeContext.siblings === overContext.siblings) {
+                if (activeContext.siblings === resolvedOverContext.siblings) {
                   const oldIndex = activeContext.siblings.findIndex((x) => x.id === activeId)
                   if (oldIndex === -1) {
                     return
                   }
                   const newOrderArray = arrayMove([...activeContext.siblings], oldIndex, overIndex)
-                  const { promise } = assignSortOrders(newOrderArray)
+                  const { promise } = assignSortOrders(newOrderArray, {
+                    onlyMoveId: activeId,
+                    prevOrder: activeContext.siblings,
+                  })
                   promise.then(() => {
                     void loadDocuments({ silent: true })
                   })
@@ -725,21 +762,15 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
                 } else {
                   let insertAfter = true
                   if (active.rect.current.translated && over.rect) {
-                    const activeRect = active.rect.current.translated
-                    const overRect = over.rect
-                    const activeCenterY = activeRect.top + activeRect.height / 2
-                    const overTop = overRect.top
-                    const overHeight = overRect.height
-                    const relativeY = (activeCenterY - overTop) / overHeight
-                    if (relativeY < 0.5) insertAfter = false
+                    const activeRect = active.rect.current.translated ?? null
+                    const overRect = over.rect ?? null
+                    const zone = getDropPosition(activeRect, overRect, { top: 0.5, bottom: 0.5 })
+                    if (zone === "top") insertAfter = false
                   }
 
                   const insertionIndex = insertAfter ? overIndex + 1 : overIndex
 
                   if (activeData.type === "document" && activeData.documentId) {
-                    const sourceItems = activeContext.siblings.filter((item) => item.id !== activeId)
-                    const { promise: sourcePromise } = assignSortOrders(sourceItems)
-
                     const targetItems = [...siblings]
                     const placeholder: SidebarTreeElement = {
                       id: activeId,
@@ -747,21 +778,21 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
                       isSelectable: true,
                       kind: "document",
                       documentId: activeData.documentId,
+                      sortOrder: undefined,
                     }
                     targetItems.splice(insertionIndex, 0, placeholder)
 
-                    const skipIds = new Set<string>([activeId])
-                    const { assignments, promise: targetPromise } = assignSortOrders(targetItems, skipIds)
-                    const nextSortOrder = assignments.get(activeId) ?? targetItems.length * 1000
+                    const idx = targetItems.findIndex((i) => i.id === activeId)
+                    const prev = idx > 0 ? targetItems[idx - 1].sortOrder : undefined
+                    const next = idx < targetItems.length - 1 ? targetItems[idx + 1].sortOrder : undefined
+                    const nextSortOrder = computeSortOrderBetween(prev as number | undefined, next as number | undefined)
 
-                    Promise.all([sourcePromise, targetPromise]).then(() => {
-                      triggerMoveDocument(
-                        activeData.documentId,
-                        overContext.parent?.folderPath,
-                        activeData.label,
-                        nextSortOrder
-                      )
-                    })
+                    triggerMoveDocument(
+                      activeData.documentId,
+                      resolvedOverContext.parent?.folderPath,
+                      activeData.label,
+                      nextSortOrder
+                    )
                     return
                   }
                 }
@@ -785,13 +816,8 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
 
         const targetFolder = findFolderByPath(treeElements, targetFolderPath)
         const siblings = targetFolder?.children ?? []
-        const maxSortOrder = siblings.reduce((max, item) => {
-          if (typeof item.sortOrder === "number") {
-            return Math.max(max, item.sortOrder)
-          }
-          return max
-        }, Number.NEGATIVE_INFINITY)
-        const nextSortOrder = Number.isFinite(maxSortOrder) ? maxSortOrder + 1000 : 0
+        const last = siblings.length ? siblings[siblings.length - 1].sortOrder : undefined
+        const nextSortOrder = computeSortOrderBetween(last as number | undefined, undefined)
 
         triggerMoveDocument(
           activeData.documentId,

@@ -81,7 +81,8 @@ export async function fetchMarkdownIndex(signal?: AbortSignal): Promise<Markdown
         typeof doc?.id === "string" &&
         typeof doc?.slug === "string" &&
         typeof doc?.documentPath === "string" &&
-        typeof doc?.title === "string"
+        typeof doc?.title === "string" &&
+        typeof doc?.sortOrder === "number"
       )
     }
   )
@@ -93,7 +94,8 @@ export async function fetchMarkdownIndex(signal?: AbortSignal): Promise<Markdown
         typeof folder?.id === "string" &&
         typeof folder?.folderPath === "string" &&
         typeof folder?.createdAt === "string" &&
-        typeof folder?.updatedAt === "string"
+        typeof folder?.updatedAt === "string" &&
+        typeof folder?.sortOrder === "number"
       )
     }
   )

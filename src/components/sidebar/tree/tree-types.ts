@@ -8,7 +8,7 @@ export type MarkdownDocument = {
   title: string
   documentPath: string
   slug: string
-  sortOrder?: number
+  sortOrder: number
 }
 
 export type MarkdownFolder = {
@@ -16,7 +16,7 @@ export type MarkdownFolder = {
   folderPath: string
   createdAt: string
   updatedAt: string
-  sortOrder?: number
+  sortOrder: number
 }
 
 export interface SidebarTreeElement extends TreeViewElement {

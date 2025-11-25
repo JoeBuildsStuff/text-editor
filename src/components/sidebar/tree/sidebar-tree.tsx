@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useRef, useCallback, type ReactNode } from "react"
+import { useMemo, useRef, useCallback, useEffect, type ReactNode } from "react"
 // import { useMemo, useRef, useCallback, useState, type ReactNode } from "react"
 import {
   DndContext,
@@ -30,6 +30,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu"
 import { SIDEBAR_TREE_ROOT_DROPPABLE_ID, type SidebarTreeElement } from "./tree-types"
+import { getDropPosition, TOP_BOUND, BOTTOM_BOUND } from "./dnd-utils"
 
 export type SidebarTreeProps = {
   elements: SidebarTreeElement[]
@@ -297,14 +298,6 @@ function FolderTreeNode({
   const folderPath =
     element.folderPath && element.folderPath.length > 0 ? element.folderPath : undefined
 
-  const { setNodeRef, isOver } = useDroppable({
-    id: `folder:${element.id}`,
-    data: {
-      type: "folder" as const,
-      folderPath,
-    },
-  })
-
   const {
     attributes,
     listeners,
@@ -316,7 +309,7 @@ function FolderTreeNode({
     data: {
       type: "folder",
       folderPath,
-      sortOrder: element.sortOrder,
+      sortOrder: element.sortOrder as number,
       label: element.name,
     },
   })
@@ -324,33 +317,27 @@ function FolderTreeNode({
   const { active, over } = useDndContext()
   const isOverContext = over?.id === element.id
   const isDraggingSelf = active?.id === element.id
-  const isOverParent = over?.id === SIDEBAR_TREE_ROOT_DROPPABLE_ID || over?.id === `folder:${element.folderPath}`
+  // Consider hovering the parent droppable (root or the parent folder's droppable)
+  const parentFolderPath = (element.folderPath?.split("/").slice(0, -1).join("/") || undefined) as
+    | string
+    | undefined
+  const isOverParent =
+    // Hovering root droppable and this folder is at root
+    (over?.id === SIDEBAR_TREE_ROOT_DROPPABLE_ID && !parentFolderPath) ||
+    // Hovering a folder droppable whose folderPath matches our parent path
+    (over?.data.current?.type === "folder" &&
+      over?.data.current?.folderPath === parentFolderPath)
 
   let dropPosition: "top" | "bottom" | "middle" | null = null
 
   // Only show indicator on the element being hovered over (the drop target)
   // Use the same calculation as the drop logic in handleDragEnd
   if (active && isOverContext && over) {
-    const activeRect = active.rect.current.translated
-    const overRect = over.rect
-
-    if (activeRect && overRect) {
-      const activeCenterY = activeRect.top + activeRect.height / 2
-      const overTop = overRect.top
-      const overHeight = overRect.height
-      const relativeY = (activeCenterY - overTop) / overHeight
-
-      // Use the same thresholds as handleDragEnd drop logic
-      if (relativeY >= 0.25 && relativeY <= 0.75) {
-        // Middle zone for folders
-        dropPosition = "middle"
-      } else if (relativeY < 0.25) {
-        // Top zone - insert above
-        dropPosition = "top"
-      } else {
-        // Bottom zone - insert below
-        dropPosition = "bottom"
-      }
+    const activeRect = active.rect.current.translated ?? null
+    const overRect = over.rect ?? null
+    const zone = getDropPosition(activeRect, overRect)
+    if (zone) {
+      dropPosition = zone
     } else {
       // Fallback: use index-based logic
       if (activeIndex === -1) dropPosition = "middle"
@@ -359,24 +346,18 @@ function FolderTreeNode({
     }
   } else if (active && isDraggingSelf && isOverParent) {
     // When dragging self and hovering over parent, show indicator at original position
-    const activeRect = active.rect.current.translated
-    const initialRect = active.rect.current.initial
-
-    if (activeRect && initialRect) {
-      const activeCenterY = activeRect.top + activeRect.height / 2
-      const initialTop = initialRect.top
-      const initialHeight = initialRect.height
-      const relativeY = (activeCenterY - initialTop) / initialHeight
-
-      if (relativeY >= 0.25 && relativeY <= 0.75) {
-        dropPosition = "middle"
-      } else if (relativeY < 0.25) {
-        dropPosition = "top"
-      } else {
-        dropPosition = "bottom"
-      }
-    }
+    const activeRect = active.rect.current.translated ?? null
+    const initialRect = active.rect.current.initial ?? null
+    const zone = getDropPosition(activeRect, initialRect)
+    if (zone) dropPosition = zone
   }
+
+  // Auto-expand folder on hover during drag, so we can show inner drop indicator
+  useEffect(() => {
+    if (isOverContext && !isOpen) {
+      options.onToggleFolder(element.id)
+    }
+  }, [isOverContext, isOpen, options, element.id])
 
   const style = {
     transform: undefined,
@@ -391,13 +372,10 @@ function FolderTreeNode({
         className={cn("rounded-sm relative", dropPosition === "middle" && "bg-muted/40")}
       >
         {dropPosition === "top" && <DropGapIndicator />}
-        <div
-          ref={setNodeRef}
-          className={cn(
-            // Always fully collapse when dragging self - indicator will appear on adjacent items
-            isDraggingSelf && "opacity-0 pointer-events-none h-0 overflow-hidden"
-          )}
-        >
+        <div className={cn(
+          // Always fully collapse when dragging self - indicator will appear on adjacent items
+          isDraggingSelf && "opacity-0 pointer-events-none h-0 overflow-hidden"
+        )}>
           <Collapsible
             open={isOpen}
             onOpenChange={() => options.onToggleFolder(element.id)}
@@ -409,7 +387,7 @@ function FolderTreeNode({
                   <SidebarMenuButton
                     className={cn(
                       options.isNested && "mr-0!",
-                      isOver && "bg-muted/60"
+                      isOverContext && "bg-muted/60"
                     )}
                     {...attributes}
                     {...listeners}
@@ -430,6 +408,11 @@ function FolderTreeNode({
                 </CollapsibleTrigger>
               </ContextMenuTrigger>
               <CollapsibleContent>
+                {dropPosition === "middle" && (
+                  <div className="pl-6">
+                    <DropGapIndicator />
+                  </div>
+                )}
                 <SidebarMenuSub className="mr-0! pr-0!">
                   <SidebarMenuSubItem>
                     <SidebarTreeNodes
@@ -513,7 +496,7 @@ function DocumentTreeNode({
       slug: element.id,
       currentFolderPath,
       label: element.name,
-      sortOrder: element.sortOrder,
+      sortOrder: element.sortOrder as number,
     },
   })
 
@@ -530,21 +513,12 @@ function DocumentTreeNode({
   // Only show indicator on the element being hovered over (the drop target)
   // Use the same calculation as the drop logic in handleDragEnd
   if (active && isOver && over) {
-    const activeRect = active.rect.current.translated
-    const overRect = over.rect
-
-    if (activeRect && overRect) {
-      const activeCenterY = activeRect.top + activeRect.height / 2
-      const overTop = overRect.top
-      const overHeight = overRect.height
-      const relativeY = (activeCenterY - overTop) / overHeight
-
-      // Use the same threshold as handleDragEnd drop logic: < 0.5 = insert above (top)
-      if (relativeY < 0.5) {
-        dropPosition = "top"
-      } else {
-        dropPosition = "bottom"
-      }
+    const activeRect = active.rect.current.translated ?? null
+    const overRect = over.rect ?? null
+    // For documents, treat no middle zone via 50/50 split
+    const zone = getDropPosition(activeRect, overRect, { top: 0.5, bottom: 0.5 })
+    if (zone === "top" || zone === "bottom") {
+      dropPosition = zone
     } else {
       // Fallback: use index-based logic
       if (activeIndex === -1) {
@@ -557,22 +531,10 @@ function DocumentTreeNode({
     }
   } else if (active && isDraggingSelf && isOverParent) {
     // When dragging self and hovering over parent, show indicator at original position
-    const activeRect = active.rect.current.translated
-    const initialRect = active.rect.current.initial
-
-    if (activeRect && initialRect) {
-      const activeCenterY = activeRect.top + activeRect.height / 2
-      const initialTop = initialRect.top
-      const initialHeight = initialRect.height
-      const relativeY = (activeCenterY - initialTop) / initialHeight
-
-      // Use same threshold as drop logic
-      if (relativeY < 0.5) {
-        dropPosition = "top"
-      } else {
-        dropPosition = "bottom"
-      }
-    }
+    const activeRect = active.rect.current.translated ?? null
+    const initialRect = active.rect.current.initial ?? null
+    const zone = getDropPosition(activeRect, initialRect, { top: 0.5, bottom: 0.5 })
+    if (zone === "top" || zone === "bottom") dropPosition = zone
   }
 
   const dragStyle = {
@@ -734,12 +696,12 @@ function calculateDropTargetRect(event: DragEndEvent): DOMRect | null {
   const relativeY = (centerY - overRect.top) / overHeight
   const isFolder = over.data.current?.type === "folder"
 
-  if (isFolder && relativeY >= 0.25 && relativeY <= 0.75) {
+  if (isFolder && relativeY >= TOP_BOUND && relativeY <= BOTTOM_BOUND) {
     return new DOMRect(overRect.left, overRect.top, overRect.width, overRect.height)
   }
 
   const height = activeRect.height || overRect.height
-  const targetTop = relativeY < (isFolder ? 0.25 : 0.5) ? overRect.top : overRect.bottom - height
+  const targetTop = relativeY < (isFolder ? TOP_BOUND : 0.5) ? overRect.top : overRect.bottom - height
 
   return new DOMRect(overRect.left, targetTop, overRect.width, height)
 }
