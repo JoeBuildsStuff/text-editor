@@ -881,6 +881,129 @@ export async function renameFolder(folderPathInput: string, newNameInput: string
   }
 }
 
+export async function moveFolder(
+  folderPathInput: string,
+  targetFolderPathInput: string | null,
+  userId: string,
+  sortOrder?: number
+) {
+  const sanitizedOldPath = sanitizeFolderPath(folderPathInput)
+  if (!sanitizedOldPath) {
+    throw new MarkdownFileOperationError("Invalid folder path", 422)
+  }
+
+  const targetParent = sanitizeFolderPath(targetFolderPathInput ?? "")
+
+  // Disallow moving a folder into itself or its descendants
+  if (targetParent === sanitizedOldPath || targetParent.startsWith(`${sanitizedOldPath}/`)) {
+    throw new MarkdownFileOperationError("Cannot move a folder into itself", 422)
+  }
+
+  const db = getDatabase()
+
+  // Check source exists
+  const folder = db
+    .prepare("SELECT id, sort_order FROM folders WHERE folder_path = ? AND user_id = ?")
+    .get(sanitizedOldPath, userId) as { id: string; sort_order: number } | undefined
+
+  if (!folder) {
+    throw new MarkdownFileOperationError("Folder not found", 404)
+  }
+
+  // Validate target parent exists if not root
+  if (targetParent.length > 0) {
+    const parentExists = db
+      .prepare("SELECT id FROM folders WHERE folder_path = ? AND user_id = ?")
+      .get(targetParent, userId)
+
+    if (!parentExists) {
+      throw new MarkdownFileOperationError("Target folder does not exist", 404)
+    }
+  }
+
+  // Compute new folder path using same base name under new parent
+  const baseName = sanitizedOldPath.split("/").pop() as string
+  const newFolderPath = targetParent.length > 0 ? `${targetParent}/${baseName}` : baseName
+
+  // Conflict check
+  const conflict = db
+    .prepare("SELECT id FROM folders WHERE folder_path = ? AND user_id = ?")
+    .get(newFolderPath, userId)
+
+  if (conflict) {
+    throw new MarkdownFileOperationError(
+      "A folder with that name already exists in the target folder",
+      409
+    )
+  }
+
+  // Perform filesystem move
+  const oldAbsolutePath = path.join(getUserDocumentsDir(userId), sanitizedOldPath)
+  const newAbsolutePath = path.join(getUserDocumentsDir(userId), newFolderPath)
+  await mkdir(path.dirname(newAbsolutePath), { recursive: true })
+  await rename(oldAbsolutePath, newAbsolutePath)
+
+  // Update DB paths for the folder and all descendants
+  const timestamp = new Date().toISOString()
+
+  const updateTree = db.transaction(() => {
+    // Update the folder
+    if (sortOrder !== undefined) {
+      db.prepare(
+        "UPDATE folders SET folder_path = ?, updated_at = ?, sort_order = ? WHERE id = ? AND user_id = ?"
+      ).run(newFolderPath, timestamp, sortOrder, folder.id, userId)
+    } else {
+      db.prepare(
+        "UPDATE folders SET folder_path = ?, updated_at = ? WHERE id = ? AND user_id = ?"
+      ).run(newFolderPath, timestamp, folder.id, userId)
+    }
+
+    // Update child folders
+    const childFolders = db
+      .prepare("SELECT id, folder_path FROM folders WHERE folder_path LIKE ? || '/%' AND user_id = ?")
+      .all(sanitizedOldPath, userId) as { id: string; folder_path: string }[]
+
+    for (const child of childFolders) {
+      const relative = child.folder_path.slice(sanitizedOldPath.length + 1)
+      const nextPath = `${newFolderPath}/${relative}`
+      db.prepare("UPDATE folders SET folder_path = ? WHERE id = ?").run(nextPath, child.id)
+    }
+
+    // Update child documents
+    const childDocs = db
+      .prepare("SELECT id, document_path FROM documents WHERE document_path LIKE ? || '/%' AND user_id = ?")
+      .all(sanitizedOldPath, userId) as { id: string; document_path: string }[]
+
+    for (const doc of childDocs) {
+      const relative = doc.document_path.slice(sanitizedOldPath.length + 1)
+      const nextDocPath = `${newFolderPath}/${relative}`
+      db.prepare("UPDATE documents SET document_path = ? WHERE id = ?").run(nextDocPath, doc.id)
+    }
+  })
+
+  updateTree()
+
+  const updated = db
+    .prepare("SELECT * FROM folders WHERE id = ? AND user_id = ?")
+    .get(folder.id, userId) as {
+      id: string
+      user_id: string
+      folder_path: string
+      created_at: string
+      updated_at: string
+      sort_order: number
+    }
+
+  return {
+    id: updated.id,
+    kind: "folder" as const,
+    folderPath: updated.folder_path,
+    createdAt: updated.created_at,
+    updatedAt: updated.updated_at,
+    sortOrder: updated.sort_order,
+  }
+}
+
 export async function updateSortOrder(
   id: string,
   type: "document" | "folder",

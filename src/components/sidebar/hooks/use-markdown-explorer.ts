@@ -33,6 +33,7 @@ import {
   deleteMarkdownFolder,
   fetchMarkdownIndex,
   moveMarkdownDocument,
+  moveMarkdownFolder,
   renameMarkdownDocument,
   renameMarkdownFolder,
   updateMarkdownSortOrder,
@@ -647,8 +648,8 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const data = event.active.data.current
-    if (data?.type === "document") {
-      setActiveDragLabel(data.label ?? "Document")
+    if (data?.type === "document" || data?.type === "folder") {
+      setActiveDragLabel(data.label ?? (data?.type === "folder" ? "Folder" : "Document"))
     }
   }, [])
 
@@ -794,6 +795,33 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
                       nextSortOrder
                     )
                     return
+                  } else if (activeData.type === "folder" && activeData.folderPath) {
+                    const targetItems = [...siblings]
+                    const placeholder: SidebarTreeElement = {
+                      id: activeId,
+                      name: activeData.label ?? "Folder",
+                      isSelectable: true,
+                      kind: "folder",
+                      folderPath: activeData.folderPath,
+                      sortOrder: undefined,
+                    }
+                    targetItems.splice(insertionIndex, 0, placeholder)
+
+                    const idx = targetItems.findIndex((i) => i.id === activeId)
+                    const prev = idx > 0 ? targetItems[idx - 1].sortOrder : undefined
+                    const next = idx < targetItems.length - 1 ? targetItems[idx + 1].sortOrder : undefined
+                    const nextSortOrder = computeSortOrderBetween(prev as number | undefined, next as number | undefined)
+
+                    // Move folder to the new parent and assign sort order
+                    startActionTransition(() => {
+                      moveMarkdownFolder(activeData.folderPath as string, resolvedOverContext.parent?.folderPath, nextSortOrder)
+                        .then(() => loadDocuments({ silent: true }))
+                        .catch((error) => {
+                          console.error(error)
+                          toast.error(error instanceof Error ? error.message : "Unable to move folder")
+                        })
+                    })
+                    return
                   }
                 }
               }
@@ -825,6 +853,46 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
           activeData.label,
           nextSortOrder
         )
+      }
+
+      // Drop a folder into a folder (middle zone) or into root
+      if (activeData.type === "folder" && activeData.folderPath && overData.type === "folder") {
+        const targetFolderPath = over.id === SIDEBAR_TREE_ROOT_DROPPABLE_ID ? undefined : (overData.folderPath ?? undefined)
+
+        // If middle zone over a folder row, move into that folder
+        if (isMiddleZone && targetFolderPath !== undefined) {
+          const targetFolder = findFolderByPath(treeElements, targetFolderPath)
+          const siblings = targetFolder?.children ?? []
+          const last = siblings.length ? siblings[siblings.length - 1].sortOrder : undefined
+          const nextSortOrder = computeSortOrderBetween(last as number | undefined, undefined)
+
+          startActionTransition(() => {
+            moveMarkdownFolder(activeData.folderPath as string, targetFolderPath, nextSortOrder)
+              .then(() => loadDocuments({ silent: true }))
+              .catch((error) => {
+                console.error(error)
+                toast.error(error instanceof Error ? error.message : "Unable to move folder")
+              })
+          })
+          return
+        }
+
+        // If over root drop zone, place at end of root
+        if (over.id === SIDEBAR_TREE_ROOT_DROPPABLE_ID) {
+          const siblings = treeElements
+          const last = siblings.length ? siblings[siblings.length - 1].sortOrder : undefined
+          const nextSortOrder = computeSortOrderBetween(last as number | undefined, undefined)
+
+          startActionTransition(() => {
+            moveMarkdownFolder(activeData.folderPath as string, undefined, nextSortOrder)
+              .then(() => loadDocuments({ silent: true }))
+              .catch((error) => {
+                console.error(error)
+                toast.error(error instanceof Error ? error.message : "Unable to move folder")
+              })
+          })
+          return
+        }
       }
     },
     [triggerMoveDocument, treeElements, assignSortOrders, loadDocuments]

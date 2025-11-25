@@ -169,6 +169,20 @@ export async function moveMarkdownDocument(params: {
   return data?.document ?? null
 }
 
+export async function moveMarkdownFolder(folderPath: string, targetFolderPath?: string | null, sortOrder?: number) {
+  const data = await markdownRequest<FolderResponse>({
+    method: "PATCH",
+    body: {
+      type: "folder",
+      folderPath,
+      targetFolderPath: targetFolderPath ?? null,
+      sortOrder,
+    },
+    errorMessage: "Failed to move folder",
+  })
+  return data?.folder ?? null
+}
+
 export async function renameMarkdownFolder(folderPath: string, newName: string) {
   await markdownRequest({
     method: "PATCH",

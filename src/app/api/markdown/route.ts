@@ -15,6 +15,7 @@ import {
   renameFolder,
   updateMarkdownFileContent,
   updateSortOrder,
+  moveFolder,
 } from "@/lib/markdown-files";
 
 async function ensureAuthenticated(request: Request): Promise<AuthSession | NextResponse> {
@@ -58,6 +59,12 @@ const renameSchema = z.object({
 
 const moveDocumentSchema = z.object({
   id: z.string().uuid(),
+  targetFolderPath: z.string().max(256).nullable().optional(),
+});
+
+const moveFolderSchema = z.object({
+  type: z.literal("folder"),
+  folderPath: z.string().min(1, "Folder path is required"),
   targetFolderPath: z.string().max(256).nullable().optional(),
 });
 
@@ -165,6 +172,14 @@ export async function PATCH(request: Request) {
       const payload = updateContentSchema.parse(data);
       const document = await updateMarkdownFileContent(payload.id, payload.content, session.user.id);
       return NextResponse.json({ document });
+    }
+
+    // Check if this is a folder move
+    if ("type" in data && data.type === "folder" && "targetFolderPath" in data) {
+      const payload = moveFolderSchema.parse(data);
+      const sortOrder = "sortOrder" in data ? (data.sortOrder as number) : undefined;
+      const folder = await moveFolder(payload.folderPath, payload.targetFolderPath ?? null, session.user.id, sortOrder);
+      return NextResponse.json({ folder });
     }
 
     // Check if this is a folder rename
