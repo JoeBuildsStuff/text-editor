@@ -102,20 +102,6 @@ Acceptance
 - One server round-trip per move.
 - No intermediate inconsistent states.
 
-## Phase 7 — Rollout and QA
-
-- Feature-gate collision changes and single-droppable mode.
-- Unit tests
-  - DnD ID utils: making/parsing/normalizing
-  - `getDropPosition` at boundary values
-  - Neighbor-based `computeSortOrderBetween`
-- E2E tests
-  - Reorder above/below docs/folders at root and nested
-  - Drop into folder (middle zone) with auto-expand delay
-  - Cross-folder move ordering correctness
-- Telemetry
-  - Track moves, failures, re-spacing frequency
-
 ## Suggested File/Code Map
 - `src/components/sidebar/tree/dnd-utils.ts`
   - ID helpers, zone math, virtual target helpers, thresholds
@@ -125,13 +111,6 @@ Acceptance
   - `src/lib/markdown-files.ts`
   - Migration SQL under `sql/migrations/*`
 
-## Timeline (Rough)
-- Phase 1–2: 2–3 hours (shared utils + refactors)
-- Phase 3: 3–5 hours (virtual collision + single droppable)
-- Phase 4: 2–3 hours (migration + API cleanup)
-- Phase 5: 3–5 hours (minimal-write keys + UI changes)
-- Phase 6: 2–4 hours (endpoint + client integration)
-- QA: 2–4 hours (unit + e2e)
 
 ## Success Criteria
 - Clean DnD API: one droppable per row, virtual targets for zones.

@@ -18,6 +18,7 @@ This folder encapsulates the interactive markdown explorer that powers the left-
 | `app-sidebar-logo.tsx` | Simple header block that renders the app brand icon/text ("Text Editor" by "Joe Builds Stuff") using the shared sidebar UI primitives. |
 | `hooks/use-markdown-explorer.ts` | Core hook that combines React Query, router interactions, drag-and-drop logic with collision detection, optimistic updates with rollback, rename dialog state, toast notifications, auto-folder opening, and helpers for CRUD actions. |
 | `tree/sidebar-tree.tsx` | Presentation-only tree view built on `@dnd-kit` and the sidebar UI toolkit. Handles context menus, drag overlays, drop position indicators, and visual feedback during drag operations. |
+| `tree/dnd-utils.ts` | Centralized DnD helpers: folder droppable ID helpers, shared drop-zone math with thresholds, and sortable-id resolution. |
 | `tree/tree-utils.ts` | Builds a nested `SidebarTreeElement[]` out of flat documents/folders and provides deterministic sorting (sortOrder first, then alphabetical) + `/documents/:slug` path helpers. Recursively sorts nested children. |
 | `api/markdown-actions.ts` | Fetch/mutate helpers that talk to `/api/markdown` using JSON payloads, include AbortSignal support, validate responses with type guards, extract error messages, and throw typed errors for the hook to surface. |
 | `rename-dialog.tsx` | Generic dialog that `useMarkdownExplorer` controls to rename either folders or documents. Supports keyboard shortcuts (Enter to submit, Escape to cancel) and validates input. |
