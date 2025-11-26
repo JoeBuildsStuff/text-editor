@@ -132,7 +132,11 @@ export function DocumentEditor({ documentId, initialContent }: DocumentEditorPro
 
   return (
     <div className="flex flex-col gap-1">
-      <Tiptap content={initialContent} onChange={handleContentChange} />
+      <Tiptap
+        content={initialContent}
+        onChange={handleContentChange}
+        enableCodeExecution
+      />
       <div className="flex h-5 items-center justify-end text-xs" aria-live="polite">
         {saveState === "error" ? (
           <span className="text-destructive">{errorMessage ?? "Unable to save document"}</span>

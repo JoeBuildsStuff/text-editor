@@ -44,6 +44,14 @@ import { getMarkdownWithFileNodes, restoreFileNodes } from '@/components/tiptap/
 
 const lowlight = createLowlight(common)
 const CustomCodeBlock = CodeBlockLowlight.extend({
+  addOptions() {
+    return {
+      ...this.parent?.(),
+      codeExecution: {
+        enabled: false,
+      },
+    }
+  },
   addNodeView() {
     return ReactNodeViewRenderer(CodeBlock)
   },
@@ -57,7 +65,8 @@ const Tiptap = ({
   onChange, 
   onFileDrop,
   fileUploadConfig,
-  enableFileNodes = true
+  enableFileNodes = true,
+  enableCodeExecution = false,
 }: TiptapProps) => {
   // Track the currently selected node for drag handle functionality
   const [, setSelectedNode] = useState<{ type: { name: string } } | null>(null)
@@ -79,6 +88,9 @@ const Tiptap = ({
             lowlight,
             HTMLAttributes: {
               class: 'hljs',
+            },
+            codeExecution: {
+              enabled: enableCodeExecution,
             }
         }),
         Link.configure({

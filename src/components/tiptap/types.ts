@@ -21,6 +21,8 @@ export interface TiptapProps {
   fileUploadConfig?: TiptapFileUploadConfig
   /** Whether to show file nodes for non-image files */
   enableFileNodes?: boolean
+  /** Enables executable code blocks with run controls */
+  enableCodeExecution?: boolean
 }
 
 export interface FileUploadResult {

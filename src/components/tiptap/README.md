@@ -202,6 +202,22 @@ const editor = useEditor({
 })
 ```
 
+## ⚡ Executable Code Blocks
+
+You can turn code blocks into runnable snippets that execute on the server-side Python runtime exposed via `/api/python-exec`.
+
+1. Enable the feature on the editor instance:
+
+```tsx
+<Tiptap
+  content={content}
+  onChange={handleChange}
+  enableCodeExecution
+/>
+```
+
+2. When enabled, every code block will display a play button next to the copy control. Clicking **Run** streams stdout, stderr, and exit status beneath the block while using the authenticated execution endpoint.
+
 ## 🔄 **Data Flow**
 
 ### **Upload Flow**
