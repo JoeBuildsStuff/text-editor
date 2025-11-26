@@ -23,7 +23,7 @@ import {
   type MarkdownFolder,
   type SidebarTreeElement,
 } from "@/components/sidebar/tree/tree-types"
-import { getDropPosition, resolveSortableId } from "@/components/sidebar/tree/dnd-utils"
+import { getDropPosition, resolveSortableId, parseDragEvent } from "@/components/sidebar/tree/dnd-utils"
 import type { SidebarTreeProps } from "@/components/sidebar/tree/sidebar-tree"
 import type { RenameDialogProps } from "@/components/sidebar/rename-dialog"
 import {
@@ -38,6 +38,14 @@ import {
   renameMarkdownFolder,
   updateMarkdownSortOrder,
 } from "@/components/sidebar/api/markdown-actions"
+import {
+  DND_ACTIVATION_DISTANCE,
+  MARKDOWN_INDEX_STALE_TIME_MS,
+  DEFAULT_DOCUMENT_TITLE,
+  DEFAULT_FOLDER_BASENAME,
+  DOCUMENT_DROP_SPLIT,
+} from "@/components/sidebar/constants"
+import { useRenameDialog } from "@/components/sidebar/hooks/use-rename-dialog"
 
 const MARKDOWN_INDEX_QUERY_KEY = ["markdown-index"] as const
 type MarkdownIndexResult = Awaited<ReturnType<typeof fetchMarkdownIndex>>
@@ -60,17 +68,12 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
 
   const [isActionPending, startActionTransition] = useTransition()
   const [openFolders, setOpenFolders] = useState<Set<string>>(new Set())
-  const [renameDialogOpen, setRenameDialogOpen] = useState(false)
-  const [renameType, setRenameType] = useState<"document" | "folder">("document")
-  const [renameId, setRenameId] = useState("")
-  const [renamePath, setRenamePath] = useState("")
-  const [renameCurrentName, setRenameCurrentName] = useState("")
-  const [renameNewName, setRenameNewName] = useState("")
+  const renameDialog = useRenameDialog()
   const [activeDragLabel, setActiveDragLabel] = useState<string | null>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
-      activationConstraint: { distance: 6 },
+      activationConstraint: { distance: DND_ACTIVATION_DISTANCE },
     })
   )
 
@@ -95,7 +98,7 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
     queryKey: MARKDOWN_INDEX_QUERY_KEY,
     queryFn: ({ signal }) => fetchMarkdownIndex(signal),
     refetchOnWindowFocus: false,
-    staleTime: 30_000,
+    staleTime: MARKDOWN_INDEX_STALE_TIME_MS,
   })
 
   const documents = useMemo(
@@ -229,7 +232,7 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
 
   const createDocumentInPath = useCallback(
     async (folderPath?: string) => {
-      const payload: Record<string, unknown> = { title: "untititled" }
+      const payload: Record<string, unknown> = { title: DEFAULT_DOCUMENT_TITLE }
       if (folderPath) {
         payload.folderPath = folderPath
       }
@@ -256,7 +259,7 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
 
   const createFolderInPath = useCallback(
     async (parentPath?: string) => {
-      const baseName = "untitled-folder"
+      const baseName = DEFAULT_FOLDER_BASENAME
       const targetPath =
         parentPath && parentPath.length > 0 ? `${parentPath}/${baseName}` : baseName
 
@@ -631,20 +634,12 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
   }, [triggerCreateFolder])
 
   const handleRenameFolder = useCallback((folderPath: string, currentName: string) => {
-    setRenameType("folder")
-    setRenamePath(folderPath)
-    setRenameCurrentName(currentName)
-    setRenameNewName(currentName)
-    setRenameDialogOpen(true)
-  }, [])
+    renameDialog.openForFolder(folderPath, currentName)
+  }, [renameDialog])
 
   const handleRenameDocument = useCallback((documentId: string, currentName: string) => {
-    setRenameType("document")
-    setRenameId(documentId)
-    setRenameCurrentName(currentName)
-    setRenameNewName(currentName)
-    setRenameDialogOpen(true)
-  }, [])
+    renameDialog.openForDocument(documentId, currentName)
+  }, [renameDialog])
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const data = event.active.data.current
@@ -657,13 +652,10 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
     (event: DragEndEvent) => {
       setActiveDragLabel(null)
 
+      const parsed = parseDragEvent(event)
+      if (!parsed) return
+      const { activeData, overData } = parsed
       const { active, over } = event
-      if (!over) return
-
-      const activeData = active.data.current
-      const overData = over.data.current
-
-      if (!activeData || !overData) return
 
       const findContext = (
         elements: SidebarTreeElement[],
@@ -715,7 +707,7 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
       }
 
       let isMiddleZone = false
-      if (active.rect.current.translated && over.rect) {
+      if (active.rect.current.translated && over?.rect) {
         const activeRect = active.rect.current.translated ?? null
         const overRect = over.rect ?? null
         const zone = getDropPosition(activeRect, overRect)
@@ -727,7 +719,7 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
 
       if (isSortableActive && isSortableOver) {
         const activeId = active.id as string
-        const overId = resolveSortableId(over.id as string, overData, treeElements)
+        const overId = resolveSortableId((event.over!.id as string), overData, treeElements)
         if (!overId) return
 
         if (activeId !== overId) {
@@ -762,10 +754,10 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
                   return
                 } else {
                   let insertAfter = true
-                  if (active.rect.current.translated && over.rect) {
+                  if (active.rect.current.translated && event.over?.rect) {
                     const activeRect = active.rect.current.translated ?? null
-                    const overRect = over.rect ?? null
-                    const zone = getDropPosition(activeRect, overRect, { top: 0.5, bottom: 0.5 })
+                    const overRect = event.over.rect ?? null
+                    const zone = getDropPosition(activeRect, overRect, { top: DOCUMENT_DROP_SPLIT, bottom: DOCUMENT_DROP_SPLIT })
                     if (zone === "top") insertAfter = false
                   }
 
@@ -857,7 +849,7 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
 
       // Drop a folder into a folder (middle zone) or into root
       if (activeData.type === "folder" && activeData.folderPath && overData.type === "folder") {
-        const targetFolderPath = over.id === SIDEBAR_TREE_ROOT_DROPPABLE_ID ? undefined : (overData.folderPath ?? undefined)
+        const targetFolderPath = (event.over!.id === SIDEBAR_TREE_ROOT_DROPPABLE_ID) ? undefined : (overData.folderPath ?? undefined)
 
         // If middle zone over a folder row, move into that folder
         if (isMiddleZone && targetFolderPath !== undefined) {
@@ -878,7 +870,7 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
         }
 
         // If over root drop zone, place at end of root
-        if (over.id === SIDEBAR_TREE_ROOT_DROPPABLE_ID) {
+        if (event.over!.id === SIDEBAR_TREE_ROOT_DROPPABLE_ID) {
           const siblings = treeElements
           const last = siblings.length ? siblings[siblings.length - 1].sortOrder : undefined
           const nextSortOrder = computeSortOrderBetween(last as number | undefined, undefined)
@@ -903,8 +895,11 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
   }, [])
 
   const handleRenameSubmit = useCallback(async () => {
-    if (!renameNewName.trim() || renameNewName.trim() === renameCurrentName) {
-      setRenameDialogOpen(false)
+    const state = renameDialog.state
+    if (state.status !== 'open') return
+    const trimmed = state.newName.trim()
+    if (!trimmed || trimmed === state.currentName) {
+      renameDialog.close()
       return
     }
 
@@ -912,14 +907,12 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
 
     startActionTransition(async () => {
       try {
-        if (renameType === "folder") {
-          await renameMarkdownFolder(renamePath, renameNewName.trim())
+        if (state.entityType === "folder") {
+          await renameMarkdownFolder(state.folderPath, trimmed)
           await loadDocuments({ silent: true })
-          const folderName = renameNewName.trim()
-          toast.success(`Renamed folder to "${folderName}"`)
+          toast.success(`Renamed folder to "${trimmed}"`)
         } else {
-          const document = await renameMarkdownDocument(renameId, renameNewName.trim())
-
+          const document = await renameMarkdownDocument(state.documentId, trimmed)
           await loadDocuments({ silent: true })
 
           if (document?.slug && selectedSlug) {
@@ -930,40 +923,24 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
             router.replace(`/documents/${encodedPath}`)
           }
 
-          const label = document?.title ?? renameNewName.trim()
+          const label = document?.title ?? trimmed
           toast.success(`Renamed document to "${label}"`)
         }
 
-        setRenameDialogOpen(false)
+        renameDialog.close()
       } catch (error) {
         console.error(error)
-        toast.error(
-          error instanceof Error ? error.message : "Unable to rename"
-        )
+        toast.error(error instanceof Error ? error.message : "Unable to rename")
       }
     })
-  }, [
-    renameType,
-    renameId,
-    renamePath,
-    renameNewName,
-    renameCurrentName,
-    isActionPending,
-    startActionTransition,
-    loadDocuments,
-    selectedSlug,
-    router,
-  ])
+  }, [renameDialog, isActionPending, startActionTransition, loadDocuments, selectedSlug, router])
 
   const renameDialogProps: RenameDialogProps = {
-    open: renameDialogOpen,
+    state: renameDialog.state,
     isPending: isActionPending,
-    type: renameType,
-    currentName: renameCurrentName,
-    newName: renameNewName,
-    onNewNameChange: (value: string) => setRenameNewName(value),
+    onNewNameChange: (value: string) => renameDialog.updateNewName(value),
     onSubmit: handleRenameSubmit,
-    onOpenChange: setRenameDialogOpen,
+    onClose: () => renameDialog.close(),
   }
 
   const treeProps: SidebarTreeProps = {

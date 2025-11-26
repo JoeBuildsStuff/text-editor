@@ -10,32 +10,30 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
+import type { RenameDialogState } from "@/components/sidebar/hooks/rename-dialog-reducer"
 
 export type RenameDialogProps = {
-  open: boolean
+  state: RenameDialogState
   isPending: boolean
-  type: "folder" | "document"
-  currentName: string
-  newName: string
   onNewNameChange: (value: string) => void
   onSubmit: () => void
-  onOpenChange: (open: boolean) => void
+  onClose: () => void
 }
 
 export function RenameDialog({
-  open,
+  state,
   isPending,
-  type,
-  currentName,
-  newName,
   onNewNameChange,
   onSubmit,
-  onOpenChange,
+  onClose,
 }: RenameDialogProps) {
-  const nameLabel = type === "folder" ? "Folder" : "Document"
+  if (state.status === 'closed') return null
+
+  const nameLabel = state.entityType === "folder" ? "Folder" : "Document"
+  const canSubmit = state.newName.trim().length > 0 && state.newName.trim() !== state.currentName
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Rename {nameLabel}</DialogTitle>
@@ -45,13 +43,13 @@ export function RenameDialog({
         </DialogHeader>
         <div className="py-4">
           <Input
-            value={newName}
+            value={state.newName}
             onChange={(event) => onNewNameChange(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === "Enter") {
+              if (event.key === "Enter" && canSubmit) {
                 onSubmit()
               } else if (event.key === "Escape") {
-                onOpenChange(false)
+                onClose()
               }
             }}
             placeholder={`Enter ${nameLabel.toLowerCase()} name`}
@@ -59,17 +57,10 @@ export function RenameDialog({
           />
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
+          <Button variant="outline" onClick={onClose} disabled={isPending}>
             Cancel
           </Button>
-          <Button
-            onClick={onSubmit}
-            disabled={
-              isPending ||
-              !newName.trim() ||
-              newName.trim() === currentName
-            }
-          >
+          <Button onClick={onSubmit} disabled={isPending || !canSubmit}>
             {isPending ? "Renaming..." : "Rename"}
           </Button>
         </DialogFooter>

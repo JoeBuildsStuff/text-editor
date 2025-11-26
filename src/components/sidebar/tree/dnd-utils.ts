@@ -1,9 +1,22 @@
-import { SIDEBAR_TREE_ROOT_DROPPABLE_ID, type SidebarTreeElement } from "./tree-types"
+import type { DragEndEvent } from "@dnd-kit/core"
+import {
+  SIDEBAR_TREE_ROOT_DROPPABLE_ID,
+  isDragData,
+  isRootDroppableData,
+  type DragData,
+  type DroppableData,
+  type SidebarTreeElement,
+} from "./tree-types"
+import {
+  DND_FOLDER_BOTTOM_BOUND,
+  DND_FOLDER_TOP_BOUND,
+} from "@/components/sidebar/constants"
 
 const FOLDER_DROPPABLE_PREFIX = "folder:" as const
 
-export const TOP_BOUND = 0.25
-export const BOTTOM_BOUND = 0.75
+// Keep legacy exports used elsewhere while sourcing from centralized constants
+export const TOP_BOUND = DND_FOLDER_TOP_BOUND
+export const BOTTOM_BOUND = DND_FOLDER_BOTTOM_BOUND
 
 export function makeFolderDroppableId(folderId: string): string {
   return `${FOLDER_DROPPABLE_PREFIX}${folderId}`
@@ -36,7 +49,7 @@ export function resolveSortableId(
   return overId
 }
 
-type RectLike = DOMRect | ClientRect
+type RectLike = { top: number; left: number; width: number; height: number; bottom?: number }
 
 export function getDropPosition(
   activeRect: RectLike | null,
@@ -56,4 +69,36 @@ export function getDropPosition(
   if (relativeY >= top && relativeY <= bottom) return "middle"
   if (relativeY < top) return "top"
   return "bottom"
+}
+
+export type ParsedDragEvent = {
+  activeData: DragData
+  overData: DroppableData
+  activeRect: RectLike | null
+  overRect: RectLike | null
+}
+
+export function parseDragEvent(event: DragEndEvent): ParsedDragEvent | null {
+  const { active, over } = event
+  if (!over) return null
+
+  const activeData = active.data.current
+  const overData = over.data.current
+
+  if (!isDragData(activeData)) {
+    console.warn("Invalid active drag data:", activeData)
+    return null
+  }
+
+  if (!isDragData(overData) && !isRootDroppableData(overData)) {
+    console.warn("Invalid over drag data:", overData)
+    return null
+  }
+
+  return {
+    activeData,
+    overData,
+    activeRect: (active.rect.current.translated ?? null) as RectLike | null,
+    overRect: (over.rect ?? null) as RectLike | null,
+  }
 }

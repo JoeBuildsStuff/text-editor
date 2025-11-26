@@ -4,6 +4,11 @@ import {
   type MarkdownFolder,
   type SidebarTreeElement,
 } from "./tree-types"
+import {
+  SORT_ORDER_DEFAULT,
+  SORT_ORDER_FALLBACK_DELTA,
+  SORT_ORDER_SPACING,
+} from "@/components/sidebar/constants"
 
 const MARKDOWN_EXTENSION = /\.md$/i
 
@@ -129,15 +134,15 @@ export function computeSortOrderBetween(prev?: number, next?: number): number {
     // If the gap is too small, fall back to midpoint (still), and rely on occasional resequencing upstream.
     const gap = next - prev
     if (!Number.isFinite(gap) || gap <= 0) {
-      return prev + 0.5 // degenerate case; caller should re-space when detected
+      return prev + SORT_ORDER_FALLBACK_DELTA // degenerate case; caller should re-space when detected
     }
     return prev + gap / 2
   }
   if (typeof prev === "number") {
-    return prev + 1000
+    return prev + SORT_ORDER_SPACING
   }
   if (typeof next === "number") {
     return next / 2
   }
-  return 0
+  return SORT_ORDER_DEFAULT
 }

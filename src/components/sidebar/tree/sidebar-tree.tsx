@@ -11,7 +11,7 @@ import {
   type DragStartEvent,
   type DragEndEvent,
   type DragCancelEvent,
-  type Sensors,
+  type SensorDescriptor,
   defaultDropAnimationSideEffects,
   type DropAnimationFunction,
 } from "@dnd-kit/core"
@@ -29,8 +29,15 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu"
-import { SIDEBAR_TREE_ROOT_DROPPABLE_ID, type SidebarTreeElement } from "./tree-types"
+import {
+  SIDEBAR_TREE_ROOT_DROPPABLE_ID,
+  type SidebarTreeElement,
+  type DocumentDragData,
+  type FolderDragData,
+  isDragData,
+} from "./tree-types"
 import { getDropPosition, TOP_BOUND, BOTTOM_BOUND } from "./dnd-utils"
+import { DOCUMENT_DROP_SPLIT, DROP_ANIMATION_DURATION_MS } from "@/components/sidebar/constants"
 
 export type SidebarTreeProps = {
   elements: SidebarTreeElement[]
@@ -45,7 +52,7 @@ export type SidebarTreeProps = {
   onRenameFolder: (folderPath: string, currentName: string) => void
   onRenameDocument: (documentId: string, currentName: string) => void
   onSelect: (slug: string) => void
-  sensors: Sensors
+  sensors: SensorDescriptor<any>[]
   collisionDetection: CollisionDetection
   onDragStart?: (event: DragStartEvent) => void
   onDragEnd?: (event: DragEndEvent) => void
@@ -133,9 +140,9 @@ export function SidebarTree({
         { transform: CSS.Transform.toString(finalTransform) },
       ]
 
-      const cleanup = applyDropSideEffects?.({ active, dragOverlay })
+      const cleanup = (applyDropSideEffects as unknown as (args: any) => (() => void) | void)?.({ active, dragOverlay })
       const animation = dragOverlay.node.animate(keyframes, {
-        duration: 220,
+        duration: DROP_ANIMATION_DURATION_MS,
         easing: "ease-out",
         fill: "forwards",
       })
@@ -309,9 +316,9 @@ function FolderTreeNode({
     data: {
       type: "folder",
       folderPath,
-      sortOrder: element.sortOrder as number,
+      sortOrder: (element.sortOrder ?? 0) as number,
       label: element.name,
-    },
+    } satisfies FolderDragData,
   })
 
   const { active, over } = useDndContext()
@@ -492,12 +499,12 @@ function DocumentTreeNode({
     id: element.id,
     data: {
       type: "document",
-      documentId: element.documentId,
+      documentId: element.documentId as string,
       slug: element.id,
       currentFolderPath,
       label: element.name,
-      sortOrder: element.sortOrder as number,
-    },
+      sortOrder: (element.sortOrder ?? 0) as number,
+    } satisfies DocumentDragData,
   })
 
   const { active, over } = useDndContext()
@@ -516,7 +523,7 @@ function DocumentTreeNode({
     const activeRect = active.rect.current.translated ?? null
     const overRect = over.rect ?? null
     // For documents, treat no middle zone via 50/50 split
-    const zone = getDropPosition(activeRect, overRect, { top: 0.5, bottom: 0.5 })
+    const zone = getDropPosition(activeRect, overRect, { top: DOCUMENT_DROP_SPLIT, bottom: DOCUMENT_DROP_SPLIT })
     if (zone === "top" || zone === "bottom") {
       dropPosition = zone
     } else {
@@ -533,7 +540,7 @@ function DocumentTreeNode({
     // When dragging self and hovering over parent, show indicator at original position
     const activeRect = active.rect.current.translated ?? null
     const initialRect = active.rect.current.initial ?? null
-    const zone = getDropPosition(activeRect, initialRect, { top: 0.5, bottom: 0.5 })
+    const zone = getDropPosition(activeRect, initialRect, { top: DOCUMENT_DROP_SPLIT, bottom: DOCUMENT_DROP_SPLIT })
     if (zone === "top" || zone === "bottom") dropPosition = zone
   }
 
@@ -626,10 +633,11 @@ function DocumentTreeNode({
 
 function DropGapIndicator() {
   const { active } = useDndContext()
-  const activeData = active?.data.current as { type?: string; label?: string } | undefined
+  const raw = active?.data.current
+  const typed = isDragData(raw) ? raw : undefined
 
-  const label = activeData?.label ?? "Placeholder"
-  const isFolder = activeData?.type === "folder"
+  const label = typed?.label ?? "Placeholder"
+  const isFolder = typed?.type === "folder"
   const Icon = isFolder ? FolderIcon : FileIcon
 
   return (
@@ -701,7 +709,7 @@ function calculateDropTargetRect(event: DragEndEvent): DOMRect | null {
   }
 
   const height = activeRect.height || overRect.height
-  const targetTop = relativeY < (isFolder ? TOP_BOUND : 0.5) ? overRect.top : overRect.bottom - height
+  const targetTop = relativeY < (isFolder ? TOP_BOUND : DOCUMENT_DROP_SPLIT) ? overRect.top : overRect.bottom - height
 
   return new DOMRect(overRect.left, targetTop, overRect.width, height)
 }
