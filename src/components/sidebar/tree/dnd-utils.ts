@@ -5,7 +5,6 @@ import {
   isRootDroppableData,
   type DragData,
   type DroppableData,
-  type SidebarTreeElement,
 } from "./tree-types"
 import {
   DND_FOLDER_BOTTOM_BOUND,
@@ -33,11 +32,7 @@ export function parseFolderDroppableId(
   return { folderId: (id as string).slice(FOLDER_DROPPABLE_PREFIX.length) }
 }
 
-export function resolveSortableId(
-  overId: string | null | undefined,
-  overData: unknown,
-  _tree: SidebarTreeElement[]
-): string | null {
+export function resolveSortableId(overId: string | null | undefined): string | null {
   if (!overId) return null
   if (overId === SIDEBAR_TREE_ROOT_DROPPABLE_ID) return overId
 

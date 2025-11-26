@@ -156,3 +156,151 @@ export function computeSortOrderBetween(prev?: number, next?: number): number {
   }
   return SORT_ORDER_DEFAULT
 }
+
+export type TraversalContext = {
+  element: SidebarTreeElement
+  parent: SidebarTreeElement | null
+  siblings: SidebarTreeElement[]
+  index: number
+  path: SidebarTreeElement[]
+  depth: number
+}
+
+export type TraversalVisitor<T> = (context: TraversalContext) => T | void | undefined
+
+export function traverseTree<T>(
+  elements: SidebarTreeElement[],
+  visitor: TraversalVisitor<T>,
+  options?: { earlyExit?: boolean }
+): T | undefined {
+  const earlyExit = options?.earlyExit ?? true
+
+  function walk(
+    currentElements: SidebarTreeElement[],
+    parent: SidebarTreeElement | null,
+    path: SidebarTreeElement[],
+    depth: number
+  ): T | undefined {
+    for (let index = 0; index < currentElements.length; index += 1) {
+      const element = currentElements[index]
+      const context: TraversalContext = {
+        element,
+        parent,
+        siblings: currentElements,
+        index,
+        path,
+        depth,
+      }
+
+      const result = visitor(context)
+      if (result !== undefined) {
+        if (earlyExit) {
+          return result
+        }
+      }
+
+      if (element.children && element.children.length > 0) {
+        const childResult = walk(
+          element.children,
+          element,
+          [...path, element],
+          depth + 1
+        )
+
+        if (childResult !== undefined) {
+          if (earlyExit) {
+            return childResult
+          }
+        }
+      }
+    }
+
+    return undefined
+  }
+
+  return walk(elements, null, [], 0)
+}
+
+export type ElementContext = {
+  element: SidebarTreeElement
+  parent: SidebarTreeElement | null
+  siblings: SidebarTreeElement[]
+  index: number
+  ancestorPath: SidebarTreeElement[]
+}
+
+export function findElementById(
+  elements: SidebarTreeElement[],
+  targetId: string
+): ElementContext | null {
+  const result = traverseTree<ElementContext>(elements, (ctx) => {
+    if (ctx.element.id === targetId) {
+      return {
+        element: ctx.element,
+        parent: ctx.parent,
+        siblings: ctx.siblings,
+        index: ctx.index,
+        ancestorPath: ctx.path,
+      }
+    }
+    return undefined
+  })
+
+  return result ?? null
+}
+
+export function findFolderByPath(
+  elements: SidebarTreeElement[],
+  targetPath: string | undefined
+): SidebarTreeElement | null {
+  if (targetPath === undefined) {
+    return {
+      id: DOCUMENTS_ROOT_ID,
+      name: "root",
+      isSelectable: false,
+      kind: "folder",
+      folderPath: undefined,
+      children: elements,
+    }
+  }
+
+  const result = traverseTree<SidebarTreeElement>(elements, (ctx) => {
+    if (ctx.element.kind === "folder" && ctx.element.folderPath === targetPath) {
+      return ctx.element
+    }
+    return undefined
+  })
+
+  return result ?? null
+}
+
+export function findAncestorFolderIds(
+  elements: SidebarTreeElement[],
+  targetSlug: string
+): string[] {
+  const result = traverseTree<string[]>(elements, (ctx) => {
+    if (ctx.element.kind === "document" && ctx.element.id === targetSlug) {
+      return ctx.path.map((ancestor) => ancestor.id)
+    }
+    return undefined
+  })
+
+  return result ?? []
+}
+
+export function collectAllFolderPaths(elements: SidebarTreeElement[]): string[] {
+  const paths: string[] = []
+
+  traverseTree(
+    elements,
+    (ctx) => {
+      if (ctx.element.kind === "folder" && ctx.element.folderPath) {
+        paths.push(ctx.element.folderPath)
+      }
+      return undefined
+    },
+    { earlyExit: false }
+  )
+
+  return paths
+}

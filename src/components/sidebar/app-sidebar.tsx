@@ -1,5 +1,6 @@
 "use client"
 
+import { useCallback, useState } from "react"
 import {
   Sidebar,
   SidebarContent,
@@ -21,8 +22,23 @@ import { SidebarLogo } from "@/components/sidebar/app-sidebar-logo"
 import { SidebarTree } from "@/components/sidebar/tree/sidebar-tree"
 import { RenameDialog } from "@/components/sidebar/rename-dialog"
 import { useMarkdownExplorer } from "@/components/sidebar/hooks/use-markdown-explorer"
+import { SidebarErrorBoundary } from "@/components/sidebar/sidebar-error-boundary"
 
 export function AppSidebar() {
+  const [boundaryKey, setBoundaryKey] = useState(0)
+
+  const handleErrorReset = useCallback(() => {
+    setBoundaryKey((key) => key + 1)
+  }, [])
+
+  return (
+    <SidebarErrorBoundary key={boundaryKey} onReset={handleErrorReset}>
+      <SidebarContents />
+    </SidebarErrorBoundary>
+  )
+}
+
+function SidebarContents() {
   const {
     isLoadingFiles,
     filesError,

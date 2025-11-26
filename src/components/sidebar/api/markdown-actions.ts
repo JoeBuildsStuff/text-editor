@@ -4,11 +4,26 @@ import type { MarkdownDocument, MarkdownFolder } from "@/components/sidebar/tree
 
 const JSON_HEADERS = { "Content-Type": "application/json" }
 
+type RetryOptions = {
+  maxAttempts: number
+  baseDelayMs: number
+  maxDelayMs: number
+  retryableStatuses: number[]
+}
+
+const DEFAULT_RETRY_OPTIONS: RetryOptions = {
+  maxAttempts: 3,
+  baseDelayMs: 200,
+  maxDelayMs: 2000,
+  retryableStatuses: [408, 429, 500, 502, 503, 504],
+}
+
 type MarkdownRequestOptions = {
   method: "GET" | "POST" | "PATCH" | "DELETE"
   body?: Record<string, unknown>
   errorMessage: string
   signal?: AbortSignal
+  retry?: RetryOptions
 }
 
 type MarkdownIndexResponse = {
@@ -17,7 +32,7 @@ type MarkdownIndexResponse = {
   folders?: unknown[]
 }
 
-type MarkdownIndexResult = {
+export type MarkdownIndexResult = {
   documents: MarkdownDocument[]
   folders: MarkdownFolder[]
 }
@@ -30,37 +45,81 @@ type FolderResponse = {
   folder?: MarkdownFolder
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function calculateBackoff(attempt: number, options: RetryOptions): number {
+  const exponentialDelay = options.baseDelayMs * Math.pow(2, attempt)
+  const jitter = Math.random() * 100
+  return Math.min(exponentialDelay + jitter, options.maxDelayMs)
+}
+
+async function extractErrorFromResponse(
+  response: Response,
+  fallbackMessage: string
+): Promise<Error> {
+  try {
+    const data = (await response.json()) as { error?: string; message?: string }
+    const message = data?.error ?? data?.message ?? fallbackMessage
+    return new Error(message)
+  } catch {
+    return new Error(fallbackMessage)
+  }
+}
+
 async function markdownRequest<T>({
   method,
   body,
   errorMessage,
   signal,
+  retry = DEFAULT_RETRY_OPTIONS,
 }: MarkdownRequestOptions): Promise<T | undefined> {
-  const response = await fetch("/api/markdown", {
-    method,
-    headers: body ? JSON_HEADERS : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-    signal,
-  })
+  let lastError: Error = new Error(errorMessage)
 
-  if (!response.ok) {
-    let message = errorMessage
-    try {
-      const data = (await response.json()) as { error?: string }
-      if (data?.error) {
-        message = data.error
-      }
-    } catch {
-      // Ignore parse errors and fallback to the provided message.
+  for (let attempt = 0; attempt < retry.maxAttempts; attempt += 1) {
+    if (signal?.aborted) {
+      throw new DOMException("Request aborted", "AbortError")
     }
-    throw new Error(message)
+
+    try {
+      const response = await fetch("/api/markdown", {
+        method,
+        headers: body ? JSON_HEADERS : undefined,
+        body: body ? JSON.stringify(body) : undefined,
+        signal,
+      })
+
+      if (response.ok) {
+        try {
+          return (await response.json()) as T
+        } catch {
+          return undefined
+        }
+      }
+
+      if (response.status >= 400 && response.status < 500) {
+        if (!retry.retryableStatuses.includes(response.status)) {
+          lastError = await extractErrorFromResponse(response, errorMessage)
+          break
+        }
+      }
+
+      lastError = new Error(`Server error: ${response.status}`)
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        throw error
+      }
+      lastError = error instanceof Error ? error : new Error(String(error))
+    }
+
+    if (attempt < retry.maxAttempts - 1) {
+      const backoff = calculateBackoff(attempt, retry)
+      await delay(backoff)
+    }
   }
 
-  try {
-    return (await response.json()) as T
-  } catch {
-    return undefined
-  }
+  throw lastError
 }
 
 export async function fetchMarkdownIndex(signal?: AbortSignal): Promise<MarkdownIndexResult> {

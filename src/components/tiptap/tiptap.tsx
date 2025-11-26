@@ -148,6 +148,7 @@ const Tiptap = ({
       attributes: {
         class: [
           "prose",
+          "max-w-none",
           "mx-auto",
           "focus:outline-none",
           "dark:prose-invert",
