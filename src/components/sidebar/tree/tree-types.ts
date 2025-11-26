@@ -10,7 +10,7 @@ export type MarkdownDocument = {
   title: string
   documentPath: string
   slug: string
-  sortOrder: number
+  sortOrder?: number
 }
 
 export type MarkdownFolder = {
@@ -18,7 +18,7 @@ export type MarkdownFolder = {
   folderPath: string
   createdAt: string
   updatedAt: string
-  sortOrder: number
+  sortOrder?: number
 }
 
 export interface SidebarTreeElement extends TreeViewElement {
@@ -28,6 +28,18 @@ export interface SidebarTreeElement extends TreeViewElement {
   documentId?: string
   documentPath?: string
   sortOrder?: number
+}
+
+export type FolderTreeElement = SidebarTreeElement & {
+  kind: "folder"
+  folderPath: string
+  children: SidebarTreeElement[]
+}
+
+export type DocumentTreeElement = SidebarTreeElement & {
+  kind: "document"
+  documentId: string
+  documentPath: string
 }
 
 // Typed drag data for dnd-kit
@@ -85,4 +97,20 @@ export function isDragData(data: unknown): data is DragData {
 export function isRootDroppableData(data: unknown): data is RootDroppableData {
   if (typeof data !== "object" || data === null) return false
   return (data as Record<string, unknown>).type === "root"
+}
+
+export function isFolderElement(element: SidebarTreeElement): element is FolderTreeElement {
+  return (
+    element.kind === "folder" &&
+    typeof element.folderPath === "string" &&
+    Array.isArray(element.children)
+  )
+}
+
+export function isDocumentElement(element: SidebarTreeElement): element is DocumentTreeElement {
+  return (
+    element.kind === "document" &&
+    typeof element.documentId === "string" &&
+    typeof element.documentPath === "string"
+  )
 }

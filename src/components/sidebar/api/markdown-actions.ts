@@ -77,12 +77,15 @@ export async function fetchMarkdownIndex(signal?: AbortSignal): Promise<Markdown
 
   const documents = dataset.filter(
     (doc: Partial<MarkdownDocument>): doc is MarkdownDocument => {
+      const hasValidSortOrder =
+        typeof doc?.sortOrder === "number" || typeof doc?.sortOrder === "undefined"
+
       return (
         typeof doc?.id === "string" &&
         typeof doc?.slug === "string" &&
         typeof doc?.documentPath === "string" &&
         typeof doc?.title === "string" &&
-        typeof doc?.sortOrder === "number"
+        hasValidSortOrder
       )
     }
   )
@@ -90,12 +93,15 @@ export async function fetchMarkdownIndex(signal?: AbortSignal): Promise<Markdown
   const rawFolders = Array.isArray(data?.folders) ? data.folders : []
   const folders = rawFolders.filter(
     (folder: Partial<MarkdownFolder>): folder is MarkdownFolder => {
+      const hasValidSortOrder =
+        typeof folder?.sortOrder === "number" || typeof folder?.sortOrder === "undefined"
+
       return (
         typeof folder?.id === "string" &&
         typeof folder?.folderPath === "string" &&
         typeof folder?.createdAt === "string" &&
         typeof folder?.updatedAt === "string" &&
-        typeof folder?.sortOrder === "number"
+        hasValidSortOrder
       )
     }
   )
@@ -103,60 +109,74 @@ export async function fetchMarkdownIndex(signal?: AbortSignal): Promise<Markdown
   return { documents, folders }
 }
 
-export async function createMarkdownDocument(payload: {
-  title?: string
-  folderPath?: string
-}) {
+export async function createMarkdownDocument(
+  payload: {
+    title?: string
+    folderPath?: string
+  },
+  signal?: AbortSignal
+) {
   const data = await markdownRequest<DocumentResponse>({
     method: "POST",
     body: payload,
     errorMessage: "Failed to create document",
+    signal,
   })
   return data?.document ?? null
 }
 
-export async function createMarkdownFolder(folderPath: string) {
+export async function createMarkdownFolder(folderPath: string, signal?: AbortSignal) {
   const data = await markdownRequest<FolderResponse>({
     method: "POST",
     body: { type: "folder", folderPath },
     errorMessage: "Failed to create folder",
+    signal,
   })
   return data?.folder ?? null
 }
 
-export async function deleteMarkdownDocument(id: string) {
+export async function deleteMarkdownDocument(id: string, signal?: AbortSignal) {
   await markdownRequest({
     method: "DELETE",
     body: { id },
     errorMessage: "Failed to delete document",
+    signal,
   })
 }
 
-export async function deleteMarkdownFolder(folderPath: string) {
+export async function deleteMarkdownFolder(folderPath: string, signal?: AbortSignal) {
   await markdownRequest({
     method: "DELETE",
     body: { type: "folder", folderPath },
     errorMessage: "Failed to delete folder",
+    signal,
   })
 }
 
-export async function updateMarkdownSortOrder(params: {
-  id: string
-  type: "document" | "folder"
-  sortOrder: number
-}) {
+export async function updateMarkdownSortOrder(
+  params: {
+    id: string
+    type: "document" | "folder"
+    sortOrder: number
+  },
+  signal?: AbortSignal
+) {
   await markdownRequest({
     method: "PATCH",
     body: params,
     errorMessage: "Failed to save order",
+    signal,
   })
 }
 
-export async function moveMarkdownDocument(params: {
-  id: string
-  targetFolderPath?: string
-  sortOrder?: number
-}) {
+export async function moveMarkdownDocument(
+  params: {
+    id: string
+    targetFolderPath?: string
+    sortOrder?: number
+  },
+  signal?: AbortSignal
+) {
   const data = await markdownRequest<DocumentResponse>({
     method: "PATCH",
     body: {
@@ -165,11 +185,17 @@ export async function moveMarkdownDocument(params: {
       sortOrder: params.sortOrder,
     },
     errorMessage: "Failed to move document",
+    signal,
   })
   return data?.document ?? null
 }
 
-export async function moveMarkdownFolder(folderPath: string, targetFolderPath?: string | null, sortOrder?: number) {
+export async function moveMarkdownFolder(
+  folderPath: string,
+  targetFolderPath?: string | null,
+  sortOrder?: number,
+  signal?: AbortSignal
+) {
   const data = await markdownRequest<FolderResponse>({
     method: "PATCH",
     body: {
@@ -179,23 +205,26 @@ export async function moveMarkdownFolder(folderPath: string, targetFolderPath?: 
       sortOrder,
     },
     errorMessage: "Failed to move folder",
+    signal,
   })
   return data?.folder ?? null
 }
 
-export async function renameMarkdownFolder(folderPath: string, newName: string) {
+export async function renameMarkdownFolder(folderPath: string, newName: string, signal?: AbortSignal) {
   await markdownRequest({
     method: "PATCH",
     body: { type: "folder", folderPath, newName },
     errorMessage: "Failed to rename folder",
+    signal,
   })
 }
 
-export async function renameMarkdownDocument(id: string, title: string) {
+export async function renameMarkdownDocument(id: string, title: string, signal?: AbortSignal) {
   const data = await markdownRequest<DocumentResponse>({
     method: "PATCH",
     body: { id, title },
     errorMessage: "Failed to rename document",
+    signal,
   })
   return data?.document ?? null
 }

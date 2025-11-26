@@ -9,6 +9,7 @@ import {
   SORT_ORDER_FALLBACK_DELTA,
   SORT_ORDER_SPACING,
 } from "@/components/sidebar/constants"
+import { parseSortOrder } from "@/lib/path-utils"
 
 const MARKDOWN_EXTENSION = /\.md$/i
 
@@ -21,16 +22,24 @@ export function buildDocumentsPath(slug: string) {
 
 export function sortTree(elements: SidebarTreeElement[]) {
   elements.sort((a, b) => {
-    if (typeof a.sortOrder === "number" && typeof b.sortOrder === "number") {
-      if (a.sortOrder !== b.sortOrder) {
-        return a.sortOrder - b.sortOrder
+    const aOrder = a.sortOrder
+    const bOrder = b.sortOrder
+
+    if (typeof aOrder === "number" && typeof bOrder === "number") {
+      if (aOrder !== bOrder) {
+        return aOrder - bOrder
       }
+    } else if (typeof aOrder === "number") {
+      return -1
+    } else if (typeof bOrder === "number") {
+      return 1
     }
+
     return a.name.localeCompare(b.name)
   })
 
   elements.forEach((element) => {
-    if (element.children) {
+    if (Array.isArray(element.children) && element.children.length > 0) {
       sortTree(element.children)
     }
   })
@@ -76,6 +85,7 @@ export function buildDocumentsTree(
           kind: "folder",
           folderPath,
           sortOrder: 0,
+          children: [],
         }
         children.push(folderNode)
       } else {
@@ -92,7 +102,7 @@ export function buildDocumentsTree(
   folders.forEach((folder) => {
     const segments = folder.folderPath.split("/").filter(Boolean)
     const node = ensureFolderNode(segments)
-    node.sortOrder = folder.sortOrder
+    node.sortOrder = parseSortOrder(folder.sortOrder)
   })
 
   files.forEach((file) => {
@@ -114,7 +124,7 @@ export function buildDocumentsTree(
       kind: "document",
       documentId: file.id,
       documentPath: file.documentPath,
-      sortOrder: file.sortOrder,
+      sortOrder: parseSortOrder(file.sortOrder),
     }
 
     children.push(documentNode)

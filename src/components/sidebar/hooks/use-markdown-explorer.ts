@@ -46,6 +46,12 @@ import {
   DOCUMENT_DROP_SPLIT,
 } from "@/components/sidebar/constants"
 import { useRenameDialog } from "@/components/sidebar/hooks/use-rename-dialog"
+import type { RenameDialogState } from "@/components/sidebar/hooks/rename-dialog-reducer"
+import { useLatestValue } from "@/hooks/use-latest-value"
+import { useCallbackStability } from "@/hooks/use-callback-stability"
+import { useAbortController } from "@/hooks/use-abort-controller"
+import { useAbortableAction } from "@/hooks/use-abortable-action"
+import { getLastPathSegment, getParentPath } from "@/lib/path-utils"
 
 const MARKDOWN_INDEX_QUERY_KEY = ["markdown-index"] as const
 type MarkdownIndexResult = Awaited<ReturnType<typeof fetchMarkdownIndex>>
@@ -70,6 +76,7 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
   const [openFolders, setOpenFolders] = useState<Set<string>>(new Set())
   const renameDialog = useRenameDialog()
   const [activeDragLabel, setActiveDragLabel] = useState<string | null>(null)
+  const abortController = useAbortController()
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -141,12 +148,17 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
     [documents, folders]
   )
 
+  const getTreeElements = useLatestValue(treeElements)
+  const getFolders = useLatestValue(folders)
+
   const selectedSlug = useMemo(() => {
     if (!pathname.startsWith("/documents")) return undefined
     const segments = pathname.split("/").slice(2).filter(Boolean)
     if (!segments.length) return undefined
     return segments.map((segment) => decodeURIComponent(segment)).join("/")
   }, [pathname])
+
+  const getSelectedSlug = useLatestValue(selectedSlug)
 
   const navigateToSlug = useCallback(
     (slug: string) => {
@@ -237,14 +249,21 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
         payload.folderPath = folderPath
       }
 
-      const document = await createMarkdownDocument(payload)
+      const signal = abortController.getSignal()
+      const document = await createMarkdownDocument(payload, signal)
       if (!document?.id || !document.documentPath) {
         throw new Error("Missing document payload")
       }
 
+      if (signal.aborted) return
+
       await loadDocuments({ silent: true })
-      const docPath = document.documentPath
-      openFolderPath(docPath.split("/").slice(0, -1).join("/"))
+      if (signal.aborted) return
+
+      const parentPath = getParentPath(document.documentPath)
+      if (parentPath) {
+        openFolderPath(parentPath)
+      }
 
       const slug = document.slug ?? document.id
       if (slug) {
@@ -254,7 +273,7 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
       const label = document.title ?? slug ?? "document"
       toast.success(`Created ${label}`)
     },
-    [loadDocuments, navigateToSlug, openFolderPath]
+    [abortController, loadDocuments, navigateToSlug, openFolderPath]
   )
 
   const createFolderInPath = useCallback(
@@ -263,18 +282,23 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
       const targetPath =
         parentPath && parentPath.length > 0 ? `${parentPath}/${baseName}` : baseName
 
-      const folder = await createMarkdownFolder(targetPath)
+      const signal = abortController.getSignal()
+      const folder = await createMarkdownFolder(targetPath, signal)
       if (!folder?.folderPath) {
         throw new Error("Missing folder payload")
       }
 
+      if (signal.aborted) return
+
       await loadDocuments({ silent: true })
+      if (signal.aborted) return
+
       openFolderPath(folder.folderPath)
 
-      const folderName = folder.folderPath.split("/").pop() ?? "folder"
+      const folderName = getLastPathSegment(folder.folderPath) ?? "folder"
       toast.success(`Created folder "${folderName}"`)
     },
-    [loadDocuments, openFolderPath]
+    [abortController, loadDocuments, openFolderPath]
   )
 
   const deleteDocumentById = useCallback(
@@ -296,8 +320,14 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
         return { ...current, documents: nextDocuments }
       })
 
+      const currentSelectedSlug = getSelectedSlug()
       const resolvedSlug = slug ?? removedDocument?.slug
-      const shouldResetSelection = Boolean(didRemove && resolvedSlug && resolvedSlug === selectedSlug)
+      const shouldResetSelection = Boolean(
+        didRemove &&
+          resolvedSlug &&
+          currentSelectedSlug &&
+          resolvedSlug === currentSelectedSlug
+      )
       const slugToRestore = shouldResetSelection ? resolvedSlug : undefined
 
       if (shouldResetSelection) {
@@ -320,10 +350,16 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
         })
       }
 
+      const signal = abortController.getSignal()
+
       try {
-        await deleteMarkdownDocument(documentId)
+        await deleteMarkdownDocument(documentId, signal)
+        if (signal.aborted) return
         await loadDocuments({ silent: true })
       } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return
+        }
         restoreDocument()
         if (slugToRestore) {
           router.replace(buildDocumentsPath(slugToRestore))
@@ -331,7 +367,7 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
         throw error
       }
     },
-    [loadDocuments, router, selectedSlug, setMarkdownIndex]
+    [abortController, getSelectedSlug, loadDocuments, router, setMarkdownIndex]
   )
 
   const deleteFolderAtPath = useCallback(
@@ -379,11 +415,12 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
         }
       })
 
+      const currentSelectedSlug = getSelectedSlug()
       const removedSelectedDoc = Boolean(
-        selectedSlug &&
-          removedDocuments.some(({ document }) => document.slug === selectedSlug)
+        currentSelectedSlug &&
+          removedDocuments.some(({ document }) => document.slug === currentSelectedSlug)
       )
-      const slugToRestore = removedSelectedDoc ? selectedSlug : undefined
+      const slugToRestore = removedSelectedDoc ? currentSelectedSlug : undefined
 
       if (removedSelectedDoc) {
         router.replace("/documents")
@@ -428,11 +465,18 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
         }
       }
 
+      const signal = abortController.getSignal()
+
       try {
-        await deleteMarkdownFolder(folderPath)
+        await deleteMarkdownFolder(folderPath, signal)
+        if (signal.aborted) return
         await loadDocuments({ silent: true })
+        if (signal.aborted) return
         closeFolderPath(folderPath)
       } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return
+        }
         restoreState()
         if (slugToRestore) {
           router.replace(buildDocumentsPath(slugToRestore))
@@ -440,20 +484,25 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
         throw error
       }
     },
-    [loadDocuments, closeFolderPath, selectedSlug, router, setMarkdownIndex]
+    [abortController, closeFolderPath, getSelectedSlug, loadDocuments, router, setMarkdownIndex]
   )
 
   const moveDocumentToFolder = useCallback(
     async (documentId: string, targetFolderPath?: string, label?: string, sortOrder?: number) => {
-      const document = await moveMarkdownDocument({ id: documentId, targetFolderPath, sortOrder })
+      const signal = abortController.getSignal()
+      const document = await moveMarkdownDocument(
+        { id: documentId, targetFolderPath, sortOrder },
+        signal
+      )
+
+      if (signal.aborted) return
 
       await loadDocuments({ silent: true })
+      if (signal.aborted) return
 
-      if (document?.documentPath) {
-        const parentPath = document.documentPath.split("/").slice(0, -1).join("/")
-        if (parentPath) {
-          openFolderPath(parentPath)
-        }
+      const parentPath = getParentPath(document?.documentPath)
+      if (parentPath) {
+        openFolderPath(parentPath)
       } else if (targetFolderPath) {
         openFolderPath(targetFolderPath)
       }
@@ -461,7 +510,7 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
       const docLabel = document?.title ?? label ?? "Document"
       toast.success(`Moved "${docLabel}"`)
     },
-    [loadDocuments, openFolderPath]
+    [abortController, loadDocuments, openFolderPath]
   )
 
   const updateSortOrder = useCallback(
@@ -479,9 +528,9 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
   const getFolderIdByPath = useCallback(
     (folderPath?: string) => {
       if (!folderPath) return undefined
-      return folders.find((folder) => folder.folderPath === folderPath)?.id
+      return getFolders().find((folder) => folder.folderPath === folderPath)?.id
     },
-    [folders]
+    [getFolders]
   )
 
   const assignSortOrders = useCallback(
@@ -500,9 +549,9 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
         if (index === -1) {
           return { assignments, promise: Promise.resolve() }
         }
-        const prev = index > 0 ? items[index - 1].sortOrder : undefined
-        const next = index < items.length - 1 ? items[index + 1].sortOrder : undefined
-        const nextSortOrder = computeSortOrderBetween(prev as number | undefined, next as number | undefined)
+        const prevItem = index > 0 ? items[index - 1] : undefined
+        const nextItem = index < items.length - 1 ? items[index + 1] : undefined
+        const nextSortOrder = computeSortOrderBetween(prevItem?.sortOrder, nextItem?.sortOrder)
         assignments.set(onlyMoveId, nextSortOrder)
 
         const moved = items[index]
@@ -559,6 +608,7 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
       if (isActionPending) return
       startActionTransition(() => {
         createDocumentInPath(folderPath).catch((error) => {
+          if (error instanceof DOMException && error.name === "AbortError") return
           console.error(error)
           toast.error(
             error instanceof Error ? error.message : "Unable to create document"
@@ -574,6 +624,7 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
       if (isActionPending) return
       startActionTransition(() => {
         createFolderInPath(parentPath).catch((error) => {
+          if (error instanceof DOMException && error.name === "AbortError") return
           console.error(error)
           toast.error(
             error instanceof Error ? error.message : "Unable to create folder"
@@ -589,6 +640,7 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
       if (!documentId || isActionPending) return
       startActionTransition(() => {
         deleteDocumentById(documentId, slug).catch((error) => {
+          if (error instanceof DOMException && error.name === "AbortError") return
           console.error(error)
           toast.error(
             error instanceof Error ? error.message : "Unable to delete document"
@@ -604,6 +656,7 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
       if (!folderPath || isActionPending) return
       startActionTransition(() => {
         deleteFolderAtPath(folderPath).catch((error) => {
+          if (error instanceof DOMException && error.name === "AbortError") return
           console.error(error)
           toast.error(error instanceof Error ? error.message : "Unable to delete folder")
         })
@@ -617,12 +670,33 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
       if (!documentId || isActionPending) return
       startActionTransition(() => {
         moveDocumentToFolder(documentId, targetFolderPath, label, sortOrder).catch((error) => {
+          if (error instanceof DOMException && error.name === "AbortError") return
           console.error(error)
           toast.error(error instanceof Error ? error.message : "Unable to move document")
         })
       })
     },
     [isActionPending, startActionTransition, moveDocumentToFolder]
+  )
+
+  const triggerMoveFolder = useCallback(
+    (folderPath: string, targetFolderPath?: string, sortOrder?: number) => {
+      if (!folderPath) return
+      startActionTransition(() => {
+        const signal = abortController.getSignal()
+        moveMarkdownFolder(folderPath, targetFolderPath ?? null, sortOrder, signal)
+          .then(async () => {
+            if (signal.aborted) return
+            await loadDocuments({ silent: true })
+          })
+          .catch((error) => {
+            if (error instanceof DOMException && error.name === "AbortError") return
+            console.error(error)
+            toast.error(error instanceof Error ? error.message : "Unable to move folder")
+          })
+      })
+    },
+    [abortController, loadDocuments, startActionTransition]
   )
 
   const handleCreateDocument = useCallback(() => {
@@ -656,6 +730,7 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
       if (!parsed) return
       const { activeData, overData } = parsed
       const { active, over } = event
+      const currentTreeElements = getTreeElements()
 
       const findContext = (
         elements: SidebarTreeElement[],
@@ -719,12 +794,12 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
 
       if (isSortableActive && isSortableOver) {
         const activeId = active.id as string
-        const overId = resolveSortableId((event.over!.id as string), overData, treeElements)
+        const overId = resolveSortableId((event.over!.id as string), overData, currentTreeElements)
         if (!overId) return
 
         if (activeId !== overId) {
-          const activeContext = findContext(treeElements, activeId)
-          const overContext = findContext(treeElements, overId)
+          const activeContext = findContext(currentTreeElements, activeId)
+          const overContext = findContext(currentTreeElements, overId)
 
           if (activeContext && overContext) {
             const isOverFolder = overData.type === "folder"
@@ -732,7 +807,7 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
             if (isOverFolder && isMiddleZone) {
               // handled below
             } else {
-              const resolvedOverContext = overContext ?? findContext(treeElements, overId)
+              const resolvedOverContext = overContext ?? findContext(currentTreeElements, overId)
               if (!resolvedOverContext) return
               const siblings = resolvedOverContext.siblings
               const overIndex = siblings.findIndex((x) => x.id === overId)
@@ -776,9 +851,9 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
                     targetItems.splice(insertionIndex, 0, placeholder)
 
                     const idx = targetItems.findIndex((i) => i.id === activeId)
-                    const prev = idx > 0 ? targetItems[idx - 1].sortOrder : undefined
-                    const next = idx < targetItems.length - 1 ? targetItems[idx + 1].sortOrder : undefined
-                    const nextSortOrder = computeSortOrderBetween(prev as number | undefined, next as number | undefined)
+                    const prevItem = idx > 0 ? targetItems[idx - 1] : undefined
+                    const nextItem = idx < targetItems.length - 1 ? targetItems[idx + 1] : undefined
+                    const nextSortOrder = computeSortOrderBetween(prevItem?.sortOrder, nextItem?.sortOrder)
 
                     triggerMoveDocument(
                       activeData.documentId,
@@ -800,19 +875,15 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
                     targetItems.splice(insertionIndex, 0, placeholder)
 
                     const idx = targetItems.findIndex((i) => i.id === activeId)
-                    const prev = idx > 0 ? targetItems[idx - 1].sortOrder : undefined
-                    const next = idx < targetItems.length - 1 ? targetItems[idx + 1].sortOrder : undefined
-                    const nextSortOrder = computeSortOrderBetween(prev as number | undefined, next as number | undefined)
+                    const prevItem = idx > 0 ? targetItems[idx - 1] : undefined
+                    const nextItem = idx < targetItems.length - 1 ? targetItems[idx + 1] : undefined
+                    const nextSortOrder = computeSortOrderBetween(prevItem?.sortOrder, nextItem?.sortOrder)
 
-                    // Move folder to the new parent and assign sort order
-                    startActionTransition(() => {
-                      moveMarkdownFolder(activeData.folderPath as string, resolvedOverContext.parent?.folderPath, nextSortOrder)
-                        .then(() => loadDocuments({ silent: true }))
-                        .catch((error) => {
-                          console.error(error)
-                          toast.error(error instanceof Error ? error.message : "Unable to move folder")
-                        })
-                    })
+                    triggerMoveFolder(
+                      activeData.folderPath as string,
+                      resolvedOverContext.parent?.folderPath,
+                      nextSortOrder
+                    )
                     return
                   }
                 }
@@ -834,10 +905,10 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
           return
         }
 
-        const targetFolder = findFolderByPath(treeElements, targetFolderPath)
+                    const targetFolder = findFolderByPath(currentTreeElements, targetFolderPath)
         const siblings = targetFolder?.children ?? []
-        const last = siblings.length ? siblings[siblings.length - 1].sortOrder : undefined
-        const nextSortOrder = computeSortOrderBetween(last as number | undefined, undefined)
+        const lastItem = siblings[siblings.length - 1]
+        const nextSortOrder = computeSortOrderBetween(lastItem?.sortOrder, undefined)
 
         triggerMoveDocument(
           activeData.documentId,
@@ -853,87 +924,89 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
 
         // If middle zone over a folder row, move into that folder
         if (isMiddleZone && targetFolderPath !== undefined) {
-          const targetFolder = findFolderByPath(treeElements, targetFolderPath)
+          const targetFolder = findFolderByPath(currentTreeElements, targetFolderPath)
           const siblings = targetFolder?.children ?? []
-          const last = siblings.length ? siblings[siblings.length - 1].sortOrder : undefined
-          const nextSortOrder = computeSortOrderBetween(last as number | undefined, undefined)
+          const lastItem = siblings[siblings.length - 1]
+          const last = lastItem?.sortOrder
+          const nextSortOrder = computeSortOrderBetween(last, undefined)
 
-          startActionTransition(() => {
-            moveMarkdownFolder(activeData.folderPath as string, targetFolderPath, nextSortOrder)
-              .then(() => loadDocuments({ silent: true }))
-              .catch((error) => {
-                console.error(error)
-                toast.error(error instanceof Error ? error.message : "Unable to move folder")
-              })
-          })
+          triggerMoveFolder(activeData.folderPath as string, targetFolderPath, nextSortOrder)
           return
         }
 
         // If over root drop zone, place at end of root
         if (event.over!.id === SIDEBAR_TREE_ROOT_DROPPABLE_ID) {
-          const siblings = treeElements
-          const last = siblings.length ? siblings[siblings.length - 1].sortOrder : undefined
-          const nextSortOrder = computeSortOrderBetween(last as number | undefined, undefined)
+          const siblings = currentTreeElements
+          const lastItem = siblings[siblings.length - 1]
+          const nextSortOrder = computeSortOrderBetween(lastItem?.sortOrder, undefined)
 
-          startActionTransition(() => {
-            moveMarkdownFolder(activeData.folderPath as string, undefined, nextSortOrder)
-              .then(() => loadDocuments({ silent: true }))
-              .catch((error) => {
-                console.error(error)
-                toast.error(error instanceof Error ? error.message : "Unable to move folder")
-              })
-          })
+          triggerMoveFolder(activeData.folderPath as string, undefined, nextSortOrder)
           return
         }
       }
     },
-    [triggerMoveDocument, treeElements, assignSortOrders, loadDocuments]
+    [assignSortOrders, getTreeElements, loadDocuments, triggerMoveDocument, triggerMoveFolder]
   )
+
+  useCallbackStability("handleDragEnd", handleDragEnd, [
+    assignSortOrders,
+    getTreeElements,
+    loadDocuments,
+    triggerMoveDocument,
+    triggerMoveFolder,
+  ])
 
   const handleDragCancel = useCallback(() => {
     setActiveDragLabel(null)
   }, [])
 
-  const handleRenameSubmit = useCallback(async () => {
-    const state = renameDialog.state
-    if (state.status !== 'open') return
-    const trimmed = state.newName.trim()
-    if (!trimmed || trimmed === state.currentName) {
-      renameDialog.close()
-      return
-    }
+  const [submitRenameAction] = useAbortableAction(
+    async (signal: AbortSignal, state: RenameDialogState) => {
+      if (state.status !== "open") return
+      const trimmed = state.newName.trim()
+      if (!trimmed || trimmed === state.currentName) {
+        renameDialog.close()
+        return
+      }
 
-    if (isActionPending) return
+      if (state.entityType === "folder") {
+        await renameMarkdownFolder(state.folderPath, trimmed, signal)
+        if (signal.aborted) return
+        await loadDocuments({ silent: true })
+        if (signal.aborted) return
+        toast.success(`Renamed folder to "${trimmed}"`)
+      } else {
+        const document = await renameMarkdownDocument(state.documentId, trimmed, signal)
+        if (signal.aborted) return
+        await loadDocuments({ silent: true })
+        if (signal.aborted) return
 
-    startActionTransition(async () => {
-      try {
-        if (state.entityType === "folder") {
-          await renameMarkdownFolder(state.folderPath, trimmed)
-          await loadDocuments({ silent: true })
-          toast.success(`Renamed folder to "${trimmed}"`)
-        } else {
-          const document = await renameMarkdownDocument(state.documentId, trimmed)
-          await loadDocuments({ silent: true })
-
-          if (document?.slug && selectedSlug) {
-            const encodedPath = document.slug
-              .split("/")
-              .map((segment) => encodeURIComponent(segment))
-              .join("/")
-            router.replace(`/documents/${encodedPath}`)
-          }
-
-          const label = document?.title ?? trimmed
-          toast.success(`Renamed document to "${label}"`)
+        const slugToNavigate = document?.slug
+        if (slugToNavigate && getSelectedSlug()) {
+          router.replace(buildDocumentsPath(slugToNavigate))
         }
 
-        renameDialog.close()
-      } catch (error) {
+        const label = document?.title ?? trimmed
+        toast.success(`Renamed document to "${label}"`)
+      }
+
+      if (signal.aborted) return
+      renameDialog.close()
+    }
+  )
+
+  const handleRenameSubmit = useCallback(() => {
+    if (isActionPending) return
+    const state = renameDialog.state
+
+    startActionTransition(() => {
+      submitRenameAction(state).catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") return
         console.error(error)
         toast.error(error instanceof Error ? error.message : "Unable to rename")
-      }
+      })
     })
-  }, [renameDialog, isActionPending, startActionTransition, loadDocuments, selectedSlug, router])
+  }, [isActionPending, renameDialog.state, startActionTransition, submitRenameAction])
 
   const renameDialogProps: RenameDialogProps = {
     state: renameDialog.state,

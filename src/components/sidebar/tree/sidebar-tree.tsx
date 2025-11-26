@@ -52,7 +52,7 @@ export type SidebarTreeProps = {
   onRenameFolder: (folderPath: string, currentName: string) => void
   onRenameDocument: (documentId: string, currentName: string) => void
   onSelect: (slug: string) => void
-  sensors: SensorDescriptor<any>[]
+  sensors: SensorDescriptor[]
   collisionDetection: CollisionDetection
   onDragStart?: (event: DragStartEvent) => void
   onDragEnd?: (event: DragEndEvent) => void
@@ -140,7 +140,10 @@ export function SidebarTree({
         { transform: CSS.Transform.toString(finalTransform) },
       ]
 
-      const cleanup = (applyDropSideEffects as unknown as (args: any) => (() => void) | void)?.({ active, dragOverlay })
+      const cleanup = (applyDropSideEffects as unknown as (args: unknown) => (() => void) | void)?.({
+        active,
+        dragOverlay,
+      })
       const animation = dragOverlay.node.animate(keyframes, {
         duration: DROP_ANIMATION_DURATION_MS,
         easing: "ease-out",
