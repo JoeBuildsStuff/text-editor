@@ -62,10 +62,42 @@ export function resolveDropScenario(
   const sameParent = activeParentId === overParentId
 
   if (sameParent) {
-    const oldIndex = activeContext.index
-    const newIndex = overContext.index
+    // If hovering the middle of a folder sibling, treat as drop-into (not reorder)
+    // This allows dropping into a sibling folder even when they share the same parent
+    const overIsFolder = overData.type === "folder"
+    if (overIsFolder && dropZone === "middle") {
+      const targetFolderPath = overContext.element.folderPath
+      if (targetFolderPath) {
+        return {
+          type: "drop-into-folder-middle",
+          activeData,
+          targetFolderPath,
+          targetFolderChildren: overContext.element.children ?? [],
+        }
+      }
+    }
 
-    if (oldIndex === newIndex) {
+    const oldIndex = activeContext.index
+    const baseTargetIndex = overContext.index
+
+    // Adjust target index based on drop zone (top vs bottom of target)
+    // This matches the visual gap indicator which shows where the item will be inserted
+    let targetIndex: number
+    if (dropZone === "top") {
+      // Insert before the target item
+      targetIndex = baseTargetIndex
+    } else {
+      // Insert after the target item (for "bottom")
+      targetIndex = baseTargetIndex + 1
+    }
+
+    // When moving forward in the list, removing the item from oldIndex
+    // shifts all items after it down by 1, so we need to adjust targetIndex
+    if (oldIndex < targetIndex) {
+      targetIndex = targetIndex - 1
+    }
+
+    if (oldIndex === targetIndex) {
       return { type: "no-op", reason: "same-position" }
     }
 
@@ -77,7 +109,7 @@ export function resolveDropScenario(
       activeData,
       siblings: overContext.siblings,
       oldIndex,
-      newIndex,
+      newIndex: targetIndex,
     }
   }
 
