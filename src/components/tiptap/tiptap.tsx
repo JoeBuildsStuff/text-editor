@@ -52,6 +52,27 @@ const CustomCodeBlock = CodeBlockLowlight.extend({
       },
     }
   },
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      lastOutput: {
+        default: '',
+        parseHTML: (element: HTMLElement) => element.getAttribute('data-last-output') || '',
+        renderHTML: (attributes: { lastOutput?: string }) => {
+          if (!attributes.lastOutput) return {}
+          return { 'data-last-output': attributes.lastOutput }
+        },
+      },
+      lastError: {
+        default: null,
+        parseHTML: (element: HTMLElement) => element.getAttribute('data-last-error') || null,
+        renderHTML: (attributes: { lastError?: string | null }) => {
+          if (!attributes.lastError) return {}
+          return { 'data-last-error': attributes.lastError }
+        },
+      },
+    }
+  },
   addNodeView() {
     return ReactNodeViewRenderer(CodeBlock)
   },

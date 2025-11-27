@@ -1,10 +1,11 @@
-// Helpers to serialize/restore TipTap file nodes as markdown-safe links so
-// custom nodes survive round-trips through the Markdown extension.
+// Helpers to serialize/restore TipTap custom nodes so they survive when the
+// document is converted to Markdown and back again.
 import type { JSONContent } from '@tiptap/core'
 import type { Editor } from '@tiptap/react'
 import { sanitizeUserSegment } from '@/lib/user-paths'
 
 const FILE_NODE_SCHEME = 'file-node'
+const CODE_BLOCK_META_LANGUAGE = '__code_execution_meta__'
 
 type FileMeta = {
   src: string
@@ -15,6 +16,11 @@ type FileMeta = {
 }
 
 type LinkMark = { type: 'link'; attrs?: { href?: string } }
+
+type CodeBlockAttrs = {
+  lastOutput?: string
+  lastError?: string | null
+}
 
 function buildFileLinkHref(attrs: FileMeta) {
   const url = new URL(`${FILE_NODE_SCHEME}://file`)
@@ -117,6 +123,55 @@ function replaceFileNodesWithLinks(json: JSONContent, userSegment?: string): JSO
   }
 }
 
+function insertCodeBlockExecutionMeta(json: JSONContent): JSONContent {
+  const mapNodes = (nodes?: JSONContent[]): JSONContent[] => {
+    if (!Array.isArray(nodes)) return nodes ?? []
+
+    const result: JSONContent[] = []
+
+    nodes.forEach((node) => {
+      if (!node) return
+
+      const mappedNode = Array.isArray(node.content)
+        ? { ...node, content: mapNodes(node.content) }
+        : node
+
+      result.push(mappedNode)
+
+      if (mappedNode.type !== 'codeBlock') {
+        return
+      }
+
+      const attrs = (mappedNode.attrs as CodeBlockAttrs | undefined) ?? {}
+      const lastOutput = typeof attrs.lastOutput === 'string' ? attrs.lastOutput : ''
+      const lastError = typeof attrs.lastError === 'string' ? attrs.lastError : null
+      const hasPersistedData = Boolean(lastOutput) || Boolean(lastError)
+
+      if (!hasPersistedData) {
+        return
+      }
+
+      result.push({
+        type: 'codeBlock',
+        attrs: { language: CODE_BLOCK_META_LANGUAGE },
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({ lastOutput, lastError }),
+          },
+        ],
+      })
+    })
+
+    return result
+  }
+
+  return {
+    ...json,
+    content: Array.isArray(json?.content) ? mapNodes(json.content) : json?.content,
+  }
+}
+
 export function restoreFileNodesFromLinks(json: JSONContent, userSegment?: string) {
   let changed = false
 
@@ -159,10 +214,63 @@ export function restoreFileNodesFromLinks(json: JSONContent, userSegment?: strin
   return { doc: { ...json, content }, changed }
 }
 
+function restoreCodeBlockExecutionMeta(json: JSONContent) {
+  let changed = false
+
+  const mapNodes = (nodes?: JSONContent[]): JSONContent[] => {
+    if (!Array.isArray(nodes)) return nodes ?? []
+
+    const result: JSONContent[] = []
+
+    nodes.forEach((node) => {
+      if (!node) return
+
+      if (node.type === 'codeBlock' && node.attrs?.language === CODE_BLOCK_META_LANGUAGE) {
+        const payload = (node.content ?? [])
+          .map((child) => (typeof child.text === 'string' ? child.text : ''))
+          .join('')
+
+        const meta = (() => {
+          try {
+            return JSON.parse(payload) as CodeBlockAttrs
+          } catch {
+            return null
+          }
+        })()
+
+        const previous = result[result.length - 1]
+        if (meta && previous?.type === 'codeBlock') {
+          const attrs = {
+            ...(previous.attrs || {}),
+            lastOutput: typeof meta.lastOutput === 'string' ? meta.lastOutput : '',
+            lastError: typeof meta.lastError === 'string' ? meta.lastError : null,
+          }
+          result[result.length - 1] = { ...previous, attrs }
+        }
+
+        changed = true
+        return
+      }
+
+      const mappedNode = Array.isArray(node.content)
+        ? { ...node, content: mapNodes(node.content) }
+        : node
+
+      result.push(mappedNode)
+    })
+
+    return result
+  }
+
+  const content = Array.isArray(json?.content) ? mapNodes(json.content) : json?.content
+  return { doc: { ...json, content }, changed }
+}
+
 export function getMarkdownWithFileNodes(editor: Editor, userId?: string | null) {
   const userSegment = sanitizeUserSegment(userId)
   const json = editor.getJSON() as JSONContent
-  const safeJson = replaceFileNodesWithLinks(json, userSegment)
+  const withFileLinks = replaceFileNodesWithLinks(json, userSegment)
+  const safeJson = insertCodeBlockExecutionMeta(withFileLinks)
   return editor.markdown ? editor.markdown.serialize(safeJson) : editor.getMarkdown()
 }
 
@@ -170,8 +278,9 @@ export function restoreFileNodes(editor: Editor | null, userId?: string | null) 
   if (!editor) return
   const userSegment = sanitizeUserSegment(userId)
   const json = editor.getJSON()
-  const { doc, changed } = restoreFileNodesFromLinks(json, userSegment)
-  if (changed) {
+  const { doc: fileDoc, changed: fileChanged } = restoreFileNodesFromLinks(json, userSegment)
+  const { doc, changed: codeChanged } = restoreCodeBlockExecutionMeta(fileDoc)
+  if (fileChanged || codeChanged) {
     editor.commands.setContent(doc, { contentType: 'json', emitUpdate: false })
   }
 }

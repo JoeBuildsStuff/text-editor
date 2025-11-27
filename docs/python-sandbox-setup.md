@@ -43,13 +43,13 @@ services:
       - PYTHON_DOCKER_IMAGE=python:3.11-slim
 ```
 
-> The socket must be mounted read/write; a read-only mount prevents the CLI from sending commands to the daemon.
+> The socket must be mounted read/write so the bundled Docker CLI can talk to the daemon.
 
 After editing compose, redeploy so the container picks up the mounts and environment variables.
 
 ## Docker Image Requirements
 
-The production image now bundles the Docker CLI (downloaded as a static binary in the Dockerfile), so no host binary mount is required. You only need to provide the daemon socket via the bind mount above.
+The production image now bundles the Docker CLI (downloaded as a static binary in the Dockerfile) and a startup script that automatically detects the socket’s group id and adds the `node` user to it. No host binary mount or manual `chmod` is required—just provide the daemon socket via the bind mount above.
 
 Pre-pull the sandbox image on the VPS to avoid long cold-starts:
 
@@ -83,7 +83,7 @@ These settings stop each of the previously successful attack scripts (env dump, 
 | Symptom | Likely Cause | Fix |
 |---------|--------------|-----|
 | `docker: command not found` | CLI missing in image | Rebuild after pulling latest Dockerfile (it now installs a static Docker CLI) |
-| `Cannot connect to the Docker daemon` | Missing socket mount / permissions | Ensure `/var/run/docker.sock` is mounted read-only and accessible (may require `chmod 660` on the host) |
+| `Cannot connect to the Docker daemon` | Missing socket mount or socket not readable | Ensure `/var/run/docker.sock` is mounted read/write (default path) |
 | First execution is slow or timeouts | Python image being pulled lazily | Run `docker pull python:3.11-slim` on the VPS before deploying |
 | Sandbox ignores restrictions | `ENABLE_PYTHON_SANDBOX` not set or not in production mode | Double-check env vars and `NODE_ENV=production` |
 

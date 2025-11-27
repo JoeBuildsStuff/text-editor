@@ -53,6 +53,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     ca-certificates \
     tar \
+    gosu \
     && rm -rf /var/lib/apt/lists/*
 
 # Install static Docker CLI binary (used to launch sandbox containers)
@@ -93,11 +94,12 @@ RUN chmod +x ./node_modules/.bin/tsc 2>/dev/null || true
 # Set ownership for node user
 RUN chown -R node:node /app
 
-# Switch to non-root user
-USER node
+# Copy entrypoint that adds node to the docker socket group before dropping privileges
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 
 # Expose port
 EXPOSE 3000
 
-# Start the application
+ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["pnpm", "start"]

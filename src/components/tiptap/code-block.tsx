@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/select'
 import { CopyButton } from '@/components/ui/copy-button'
 import { Button } from '@/components/ui/button'
-import { Play } from 'lucide-react'
+import { Play, X } from 'lucide-react'
 
 import { streamPythonExecution } from '@/lib/python-executor'
 import Spinner from '../ui/spinner'
@@ -27,10 +27,16 @@ export function CodeBlock(props: NodeViewProps) {
   const executionEnabled = Boolean(codeExecution?.enabled)
   const canRun = executionEnabled
 
-  const [output, setOutput] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const [output, setOutput] = useState(() => props.node.attrs.lastOutput || '')
+  const [error, setError] = useState<string | null>(props.node.attrs.lastError || null)
   const [isRunning, setIsRunning] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
+  useEffect(() => {
+    if (!isRunning) {
+      setOutput(props.node.attrs.lastOutput || '')
+      setError(props.node.attrs.lastError || null)
+    }
+  }, [isRunning, props.node.attrs.lastError, props.node.attrs.lastOutput])
   useEffect(() => {
     return () => {
       abortControllerRef.current?.abort()
@@ -41,6 +47,12 @@ export function CodeBlock(props: NodeViewProps) {
     props.updateAttributes({ language })
   }
 
+  const handleClearOutput = () => {
+    setOutput('')
+    setError(null)
+    props.updateAttributes({ lastOutput: '', lastError: null })
+  }
+
   const handleRun = async () => {
     if (!canRun) {
       return
@@ -49,6 +61,7 @@ export function CodeBlock(props: NodeViewProps) {
     const code = props.node.textContent
     if (!code || !code.trim()) {
       setError('Nothing to execute in this block')
+      props.updateAttributes({ lastOutput: '', lastError: 'Nothing to execute in this block' })
       return
     }
 
@@ -60,27 +73,30 @@ export function CodeBlock(props: NodeViewProps) {
     const controller = new AbortController()
     abortControllerRef.current = controller
 
+    let accumulatedOutput = ''
+
     try {
       await streamPythonExecution(
         code,
         {
           onStdout: (chunk) => {
-            setOutput((prev) => (prev ? prev + chunk : chunk))
+            accumulatedOutput += chunk
+            setOutput(accumulatedOutput)
           },
           onStderr: (chunk) => {
-            setOutput((prev) => {
-              const formatted = formatStderrChunk(chunk)
-              return prev ? prev + formatted : formatted
-            })
+            const formatted = formatStderrChunk(chunk)
+            accumulatedOutput += formatted
+            setOutput(accumulatedOutput)
           },
           onExit: (exitCode) => {
-            setOutput((prev) => {
-              const message = `\n[Process exited with code ${exitCode ?? 'unknown'}]`
-              return prev ? prev + message : message.trim()
-            })
+            const message = `\n[Process exited with code ${exitCode ?? 'unknown'}]`
+            accumulatedOutput += message
+            setOutput(accumulatedOutput)
+            props.updateAttributes({ lastOutput: accumulatedOutput, lastError: null })
           },
           onErrorEvent: (message) => {
             setError(message)
+            props.updateAttributes({ lastOutput: accumulatedOutput, lastError: message })
           },
         },
         { signal: controller.signal }
@@ -88,8 +104,11 @@ export function CodeBlock(props: NodeViewProps) {
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') {
         setError('Execution cancelled')
+        props.updateAttributes({ lastOutput: accumulatedOutput, lastError: 'Execution cancelled' })
       } else {
-        setError(err instanceof Error ? err.message : 'Unexpected error')
+        const message = err instanceof Error ? err.message : 'Unexpected error'
+        setError(message)
+        props.updateAttributes({ lastOutput: accumulatedOutput, lastError: message })
       }
     } finally {
       setIsRunning(false)
@@ -97,9 +116,11 @@ export function CodeBlock(props: NodeViewProps) {
     }
   }
 
+  const hasOutput = Boolean(output) || Boolean(error)
+
   return (
     <NodeViewWrapper className="bg-background code-block group relative mb-4 rounded-lg border border-border">
-      <div className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/40 px-3 py-2">
+      <div className="flex flex-wrap items-center border-b border-border bg-muted/20 rounded-t-lg px-3 py-2">
         <Select
           defaultValue={props.node.attrs.language || 'plaintext'}
           onValueChange={handleLanguageChange}
@@ -136,6 +157,17 @@ export function CodeBlock(props: NodeViewProps) {
               )}
             </Button>
           )}
+          {canRun && hasOutput && !isRunning && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={handleClearOutput}
+              title="Clear output"
+            >
+              <X className="size-4" />
+            </Button>
+          )}
           <CopyButton
             textToCopy={props.node.textContent}
             successMessage="Code copied to clipboard"
@@ -145,15 +177,15 @@ export function CodeBlock(props: NodeViewProps) {
           />
         </div>
       </div>
-      <pre className="mb-0 bg-background px-3 py-3">
+      <pre className="">
         <NodeViewContent className="hljs" />
       </pre>
       {executionEnabled && (
-        <div className="border-t border-border bg-muted/40 px-3 py-2 text-xs font-mono">
+        <div className={`border-t border-border  text-xs font-mono ${hasOutput ? '' : 'px-3 py-2'}`}>
           {error ? (
-            <span className="text-destructive">{error}</span>
+            <span className="text-destructive px-2 py-1">{error}</span>
           ) : output ? (
-            <pre className="whitespace-pre-wrap break-words text-xs">{output}</pre>
+            <div className="m-0 px-4 py-2 whitespace-pre-wrap wrap-break-word text-xs">{output}</div>
           ) : isRunning ? (
             <span className="text-muted-foreground">Running…</span>
           ) : (
