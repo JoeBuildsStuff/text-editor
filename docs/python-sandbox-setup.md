@@ -37,25 +37,21 @@ services:
   text-editor:
     volumes:
       - /home/joe/data/text-editor:/app/server
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /usr/bin/docker:/usr/bin/docker:ro  # reuse host CLI binary
+      - /var/run/docker.sock:/var/run/docker.sock  # rw so Docker CLI can talk to the daemon
     environment:
       - ENABLE_PYTHON_SANDBOX=true
       - PYTHON_DOCKER_IMAGE=python:3.11-slim
 ```
 
-> **Alternative:** If you prefer not to mount `/usr/bin/docker`, install the Docker CLI inside your image (e.g. `apt-get install docker-ce-cli`) and keep only the socket mount. Mounting the host binary keeps the image smaller but assumes `/usr/bin/docker` exists on the VPS.
+> The socket must be mounted read/write; a read-only mount prevents the CLI from sending commands to the daemon.
 
 After editing compose, redeploy so the container picks up the mounts and environment variables.
 
 ## Docker Image Requirements
 
-Because the sandbox containers are siblings (spawned by the host Docker daemon), the application image only needs the Docker CLI client. There are two supported options:
+The production image now bundles the Docker CLI (downloaded as a static binary in the Dockerfile), so no host binary mount is required. You only need to provide the daemon socket via the bind mount above.
 
-1. **Mount host CLI (recommended for simplicity)** – as shown above.
-2. **Install docker-ce-cli in the Dockerfile** – follow the instructions from Docker’s apt repository if you need a self-contained image.
-
-Regardless of the approach, pre-pull the sandbox image on the VPS to avoid long cold-starts:
+Pre-pull the sandbox image on the VPS to avoid long cold-starts:
 
 ```bash
 sudo docker pull python:3.11-slim
@@ -79,14 +75,14 @@ These settings stop each of the previously successful attack scripts (env dump, 
 1. Deploy with the updated compose file and environment variables.
 2. Run each snippet from `Python Sandbox Attack Scripts` inside the editor or `/terminal` page.
 3. Confirm you see explicit errors (`Network unreachable`, `Read-only file system`, permission errors, etc.).
-4. Verify `/usr/bin/docker` is reachable in the container (`docker --version`).
+4. Verify the bundled Docker CLI works inside the container (`docker --version`).
 5. Monitor container logs for failures so you can tune `EXECUTION_TIMEOUT_MS` if Docker cold-starts are slow.
 
 ## Troubleshooting
 
 | Symptom | Likely Cause | Fix |
 |---------|--------------|-----|
-| `docker: command not found` | CLI not mounted or installed | Add the `/usr/bin/docker` bind mount or install docker-ce-cli in the image |
+| `docker: command not found` | CLI missing in image | Rebuild after pulling latest Dockerfile (it now installs a static Docker CLI) |
 | `Cannot connect to the Docker daemon` | Missing socket mount / permissions | Ensure `/var/run/docker.sock` is mounted read-only and accessible (may require `chmod 660` on the host) |
 | First execution is slow or timeouts | Python image being pulled lazily | Run `docker pull python:3.11-slim` on the VPS before deploying |
 | Sandbox ignores restrictions | `ENABLE_PYTHON_SANDBOX` not set or not in production mode | Double-check env vars and `NODE_ENV=production` |

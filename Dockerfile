@@ -45,12 +45,21 @@ FROM node:20.19.5-slim AS runner
 # Install pnpm 9
 RUN corepack enable && corepack prepare pnpm@9 --activate
 
-# Install build deps for better-sqlite3 so prod install can compile native module
+# Install build deps for better-sqlite3 and runtime tools (Docker CLI for sandboxing)
 RUN apt-get update && apt-get install -y \
     python3 \
     make \
     g++ \
+    curl \
+    ca-certificates \
+    tar \
     && rm -rf /var/lib/apt/lists/*
+
+# Install static Docker CLI binary (used to launch sandbox containers)
+RUN set -eux; \
+    curl -fsSL https://download.docker.com/linux/static/stable/x86_64/docker-26.1.3.tgz \
+      | tar xz --strip-components=1 -C /usr/local/bin docker/docker; \
+    chmod +x /usr/local/bin/docker
 
 WORKDIR /app
 

@@ -11,9 +11,8 @@ services:
     volumes:
       # Persist database and documents
       - /home/joe/data/text-editor:/app/server
-      # Allow the app to spawn hardened Python sandboxes
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /usr/bin/docker:/usr/bin/docker:ro
+      # Allow the app to spawn hardened Python sandboxes (requires read/write)
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - NODE_ENV=production
       - NEXT_TELEMETRY_DISABLED=1
