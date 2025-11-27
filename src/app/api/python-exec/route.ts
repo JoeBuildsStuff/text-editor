@@ -5,12 +5,19 @@ import path from "node:path"
 
 import { requireAdminSession } from "@/lib/auth/session"
 
-const EXECUTION_TIMEOUT_MS = 5_000
+const EXECUTION_TIMEOUT_MS = 10_000
 const RATE_LIMIT_WINDOW_MS = 60_000
 const RATE_LIMIT_MAX_REQUESTS = 5
 const SANDBOX_DIR =
   process.env.PYTHON_SANDBOX_DIR ?? path.join(process.cwd(), "server", "python-sandbox")
+const PYTHON_DOCKER_IMAGE = process.env.PYTHON_DOCKER_IMAGE ?? "python:3.11-slim"
+
 const SAFE_ENV_KEYS = ["PATH", "PYTHONPATH", "HOME", "LANG"] as const
+const textEncoder = new TextEncoder()
+
+const HARDENED_SANDBOX_ENABLED =
+  // process.env.NODE_ENV === "production" &&
+  process.env.ENABLE_PYTHON_SANDBOX === "true"
 
 type RateLimiterEntry = {
   windowStart: number
@@ -19,7 +26,6 @@ type RateLimiterEntry = {
 
 const rateLimiter = new Map<string, RateLimiterEntry>()
 let preparedSandboxDir: Promise<void> | null = null
-const textEncoder = new TextEncoder()
 
 function buildSandboxEnv(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { PYTHONUNBUFFERED: "1" }
@@ -32,7 +38,12 @@ function buildSandboxEnv(): NodeJS.ProcessEnv {
   return env
 }
 
-function isRateLimited(userId: string): boolean {
+function encodeSse(event: string, data: unknown) {
+  const text = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
+  return textEncoder.encode(text)
+}
+
+function isRateLimited(userId: string) {
   const now = Date.now()
   const entry = rateLimiter.get(userId)
 
@@ -49,16 +60,58 @@ function isRateLimited(userId: string): boolean {
   return false
 }
 
-function encodeSse(event: string, data: unknown): Uint8Array {
-  const text = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
-  return textEncoder.encode(text)
-}
-
 async function ensureSandboxDir() {
   if (!preparedSandboxDir) {
     preparedSandboxDir = mkdir(SANDBOX_DIR, { recursive: true })
   }
   await preparedSandboxDir
+}
+
+function buildPythonCommand(code: string): { command: string; args: string[] } {
+  if (HARDENED_SANDBOX_ENABLED) {
+    return {
+      command: "docker",
+      args: [
+        "run",
+        "--rm",
+        "-i",
+        "--network",
+        "none",
+        "--read-only",
+        "--tmpfs",
+        "/tmp:size=10M,mode=1777,noexec",
+        "--cap-drop",
+        "ALL",
+        "--security-opt",
+        "no-new-privileges",
+        "--memory",
+        "128m",
+        "--memory-swap",
+        "128m",
+        "--cpus",
+        "0.5",
+        "--pids-limit",
+        "50",
+        "--user",
+        "nobody:nogroup",
+        "--device",
+        "/dev/null:/dev/null",
+        "--device",
+        "/dev/zero:/dev/zero",
+        "--device",
+        "/dev/urandom:/dev/urandom",
+        "-e",
+        "PYTHONUNBUFFERED=1",
+        PYTHON_DOCKER_IMAGE,
+        "python3",
+        "-I",
+        "-c",
+        code,
+      ],
+    }
+  }
+
+  return { command: "python3", args: ["-I", "-c", code] }
 }
 
 export async function POST(request: Request) {
@@ -81,10 +134,11 @@ export async function POST(request: Request) {
 
   await ensureSandboxDir()
   const sandboxEnv = buildSandboxEnv()
+  const { command, args } = buildPythonCommand(code)
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
-      const child = spawn("python3", ["-I", "-c", code], {
+      const child = spawn(command, args, {
         cwd: SANDBOX_DIR,
         env: sandboxEnv,
         stdio: ["ignore", "pipe", "pipe"],
@@ -97,10 +151,10 @@ export async function POST(request: Request) {
         )
       }, EXECUTION_TIMEOUT_MS)
 
-      let streamClosed = false
+      let closed = false
       const closeStream = (event: string, data: unknown) => {
-        if (streamClosed) return
-        streamClosed = true
+        if (closed) return
+        closed = true
         clearTimeout(timeout)
         controller.enqueue(encodeSse(event, data))
         controller.close()

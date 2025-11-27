@@ -57,3 +57,6 @@ server/uploads/**
 
 # Keep server README.md (documentation)
 !server/README.md
+
+# issues to address
+issues-to-address/**

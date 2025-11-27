@@ -21,6 +21,7 @@ This is a markdown-based text editor built with Next.js and Tiptap. It provides 
 
 ### Operations
 - **[Deployment Guide](./deployment.md)** - Production deployment process, CI/CD, and optimization strategies
+- **[Python Sandbox Setup](./python-sandbox-setup.md)** - Hardened execution environment for the `/api/python-exec` endpoint
 
 ## 🎯 Quick Links
 

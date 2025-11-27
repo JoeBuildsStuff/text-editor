@@ -11,6 +11,9 @@ services:
     volumes:
       # Persist database and documents
       - /home/joe/data/text-editor:/app/server
+      # Allow the app to spawn hardened Python sandboxes
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /usr/bin/docker:/usr/bin/docker:ro
     environment:
       - NODE_ENV=production
       - NEXT_TELEMETRY_DISABLED=1
@@ -18,6 +21,8 @@ services:
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
       - BETTER_AUTH_URL=${BETTER_AUTH_URL:-https://text-editor.joe-taylor.me}
       - NEXT_PUBLIC_BETTER_AUTH_URL=${BETTER_AUTH_URL:-https://text-editor.joe-taylor.me}
+      - ENABLE_PYTHON_SANDBOX=true
+      - PYTHON_DOCKER_IMAGE=python:3.11-slim
     networks:
       - traefik_proxy
     labels:
@@ -46,4 +51,3 @@ services:
 networks:
   traefik_proxy:
     external: true
-
