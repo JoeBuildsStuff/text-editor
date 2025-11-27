@@ -16,10 +16,7 @@ import { Play, X } from 'lucide-react'
 
 import { streamPythonExecution } from '@/lib/python-executor'
 import Spinner from '../ui/spinner'
-
-function formatStderrChunk(chunk: string) {
-  return chunk.replace(/^/gm, (line) => `[stderr] ${line}`)
-}
+import { buildProcessExitMessage, formatStderrChunk } from '@/lib/python-output'
 
 function buildCopyPayload(code: string, lastOutput?: string, lastError?: string | null) {
   const sections: string[] = []
@@ -116,8 +113,7 @@ export function CodeBlock(props: NodeViewProps) {
             setOutput(accumulatedOutput)
           },
           onExit: (exitCode) => {
-            const message = `\n[Process exited with code ${exitCode ?? 'unknown'}]`
-            accumulatedOutput += message
+            accumulatedOutput += buildProcessExitMessage(exitCode)
             setOutput(accumulatedOutput)
             props.updateAttributes({ lastOutput: accumulatedOutput, lastError: null })
           },
