@@ -4,15 +4,18 @@ import { mkdir } from "node:fs/promises"
 import path from "node:path"
 
 import { requireAdminSession } from "@/lib/auth/session"
+import { isExecutionMode } from "@/lib/execution-modes"
+import type { ExecutionMode } from "@/lib/execution-modes"
 
 const EXECUTION_TIMEOUT_MS = 10_000
 const RATE_LIMIT_WINDOW_MS = 60_000
 const RATE_LIMIT_MAX_REQUESTS = 5
-const SANDBOX_DIR =
+const SANDBOX_ROOT =
   process.env.PYTHON_SANDBOX_DIR ?? path.join(process.cwd(), "server", "python-sandbox")
 const PYTHON_DOCKER_IMAGE = process.env.PYTHON_DOCKER_IMAGE ?? "python:3.11-slim"
 
 const SAFE_ENV_KEYS = ["PATH", "PYTHONPATH", "HOME", "LANG"] as const
+const SANDBOX_USER_SEGMENT = /[^a-zA-Z0-9_-]/g
 const textEncoder = new TextEncoder()
 
 const HARDENED_SANDBOX_ENABLED =
@@ -25,7 +28,7 @@ type RateLimiterEntry = {
 }
 
 const rateLimiter = new Map<string, RateLimiterEntry>()
-let preparedSandboxDir: Promise<void> | null = null
+let preparedSandboxRoot: Promise<void> | null = null
 
 function buildSandboxEnv(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { PYTHONUNBUFFERED: "1" }
@@ -60,15 +63,36 @@ function isRateLimited(userId: string) {
   return false
 }
 
-async function ensureSandboxDir() {
-  if (!preparedSandboxDir) {
-    preparedSandboxDir = mkdir(SANDBOX_DIR, { recursive: true })
+async function ensureSandboxRoot() {
+  if (!preparedSandboxRoot) {
+    preparedSandboxRoot = mkdir(SANDBOX_ROOT, { recursive: true })
   }
-  await preparedSandboxDir
+  await preparedSandboxRoot
 }
 
-function buildPythonCommand(code: string): { command: string; args: string[] } {
+function resolveUserSandboxDir(userId: string) {
+  const safeSegment = userId.replace(SANDBOX_USER_SEGMENT, "_")
+  return path.join(SANDBOX_ROOT, safeSegment)
+}
+
+async function ensureUserSandbox(userId: string) {
+  await ensureSandboxRoot()
+  const userDir = resolveUserSandboxDir(userId)
+  await mkdir(userDir, { recursive: true })
+  return userDir
+}
+
+function buildSandboxCommand(
+  mode: ExecutionMode,
+  code: string,
+  userSandboxDir: string
+): { command: string; args: string[] } {
   if (HARDENED_SANDBOX_ENABLED) {
+    const runtimeArgs =
+      mode === "python"
+        ? ["python3", "-I", "-c", code]
+        : ["bash", "-lc", code]
+
     return {
       command: "docker",
       args: [
@@ -102,11 +126,12 @@ function buildPythonCommand(code: string): { command: string; args: string[] } {
         "/dev/urandom:/dev/urandom",
         "-e",
         "PYTHONUNBUFFERED=1",
+        "-v",
+        `${userSandboxDir}:/sandbox:rw`,
+        "-w",
+        "/sandbox",
         PYTHON_DOCKER_IMAGE,
-        "python3",
-        "-I",
-        "-c",
-        code,
+        ...runtimeArgs,
       ],
     }
   }
@@ -127,19 +152,37 @@ export async function POST(request: Request) {
     )
   }
 
-  const { code } = await request.json().catch(() => ({ code: null }))
-  if (typeof code !== "string" || !code.trim()) {
-    return NextResponse.json({ error: "Python code is required" }, { status: 400 })
+  const payload = await request.json().catch(() => ({}))
+  const code: unknown = payload?.code
+  const rawMode: unknown = payload?.mode
+
+  let mode: ExecutionMode = "python"
+  if (rawMode !== undefined) {
+    if (!isExecutionMode(rawMode)) {
+      return NextResponse.json({ error: "Invalid execution mode" }, { status: 400 })
+    }
+    mode = rawMode
   }
 
-  await ensureSandboxDir()
+  if (mode === "bash" && !HARDENED_SANDBOX_ENABLED) {
+    return NextResponse.json(
+      { error: "Shell execution requires ENABLE_PYTHON_SANDBOX=true" },
+      { status: 400 }
+    )
+  }
+
+  if (typeof code !== "string" || !code.trim()) {
+    return NextResponse.json({ error: "Command text is required" }, { status: 400 })
+  }
+
+  const userSandboxDir = await ensureUserSandbox(session.user.id)
   const sandboxEnv = buildSandboxEnv()
-  const { command, args } = buildPythonCommand(code)
+  const { command, args } = buildSandboxCommand(mode, code, userSandboxDir)
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       const child = spawn(command, args, {
-        cwd: SANDBOX_DIR,
+        cwd: userSandboxDir,
         env: sandboxEnv,
         stdio: ["ignore", "pipe", "pipe"],
       })

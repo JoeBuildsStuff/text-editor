@@ -2,13 +2,22 @@
 import { useState, useRef } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { streamPythonExecution } from "@/lib/python-executor";
 import { buildProcessExitMessage, formatStderrChunk } from "@/lib/python-output";
+import { EXECUTION_MODES, type ExecutionMode } from "@/lib/execution-modes";
 
 type HistoryItem = {
   id: number;
   command: string;
   output: string;
+  mode: ExecutionMode;
   isExecuting?: boolean;
 };
 
@@ -20,6 +29,7 @@ type ActiveExecution = {
 export default function TerminalPage() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [input, setInput] = useState("");
+  const [mode, setMode] = useState<ExecutionMode>("python");
   // Track the command we can abort (e.g., when user types `clear`).
   const abortControllerRef = useRef<ActiveExecution | null>(null);
   const nextIdRef = useRef<number>(0);
@@ -37,6 +47,7 @@ export default function TerminalPage() {
       return;
     }
 
+    const executionMode = mode;
     // Create a unique ID for this command
     const commandId = nextIdRef.current++;
     const commandForDisplay = normalizedInput.trimEnd();
@@ -44,7 +55,13 @@ export default function TerminalPage() {
     // Add command to history with empty output, marked as executing
     setHistory((h) => [
       ...h,
-      { id: commandId, command: commandForDisplay, output: "", isExecuting: true },
+      {
+        id: commandId,
+        command: commandForDisplay,
+        output: "",
+        isExecuting: true,
+        mode: executionMode,
+      },
     ]);
 
     // Create abort controller for this execution
@@ -104,7 +121,7 @@ export default function TerminalPage() {
             finalizeCommand(`${prefix}[Error: ${message}]`);
           },
         },
-        { signal: abortController.signal }
+        { signal: abortController.signal, mode: executionMode }
       );
     } catch (error) {
       const isAbortError = error instanceof DOMException && error.name === "AbortError";
@@ -130,8 +147,28 @@ export default function TerminalPage() {
     }
   }
 
+  const placeholder =
+    mode === "python"
+      ? "Type Python code and press Enter (or 'clear' to clear history)"
+      : "Type shell commands and press Enter (or 'clear' to reset)";
+
   return (
     <div className="h-full w-full flex flex-col font-mono">
+      <div className="flex items-center gap-2 pb-2">
+        <div className="text-xs uppercase text-muted-foreground">Mode</div>
+        <Select value={mode} onValueChange={(value) => setMode(value as ExecutionMode)}>
+          <SelectTrigger className="h-8 w-40">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {EXECUTION_MODES.map((value) => (
+              <SelectItem key={value} value={value}>
+                {value === "python" ? "Python" : "Bash shell"}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
       <div className="flex flex-col flex-1 overflow-auto justify-end pb-2">
         <div className="flex flex-col space-y-2">
           {/* Show oldest command at top, newest at bottom */}
@@ -140,11 +177,16 @@ export default function TerminalPage() {
               <Separator className="my-2 w-full" />
               <div className="flex items-start gap-2">
                 <span className="text-muted-foreground mt-0.5">$</span>
-                <div className="flex flex-col gap-1">
-                  <span className="whitespace-pre-wrap break-words">{item.command}</span>
-                  {item.isExecuting && (
-                    <span className="text-muted-foreground text-xs animate-pulse">Running…</span>
-                  )}
+                <div className="flex flex-col gap-1 w-full">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <span className="uppercase tracking-wide">
+                      {item.mode === "python" ? "PYTHON" : "BASH"}
+                    </span>
+                    {item.isExecuting && (
+                      <span className="animate-pulse">Running…</span>
+                    )}
+                  </div>
+                  <span className="whitespace-pre-wrap break-words text-sm">{item.command}</span>
                 </div>
               </div>
               {item.output && (
@@ -161,7 +203,7 @@ export default function TerminalPage() {
           value={input}
           onChange={handleInputChange}
           onKeyDown={handleInputKeyDown}
-          placeholder="Type Python code and press Enter (or 'clear' to clear history)"
+          placeholder={placeholder}
           autoFocus
         />
       </div>

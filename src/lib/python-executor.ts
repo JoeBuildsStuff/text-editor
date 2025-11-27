@@ -1,3 +1,5 @@
+import type { ExecutionMode } from './execution-modes'
+
 export type PythonExecutionCallbacks = {
   onStdout?: (chunk: string) => void
   onStderr?: (chunk: string) => void
@@ -7,6 +9,7 @@ export type PythonExecutionCallbacks = {
 
 interface StreamOptions {
   signal?: AbortSignal
+  mode?: ExecutionMode
 }
 
 function parseSseEvents(buffer: string, handleEvent: (event: string, data: unknown) => void) {
@@ -45,7 +48,7 @@ export async function streamPythonExecution(
   const response = await fetch("/api/python-exec", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code }),
+    body: JSON.stringify({ code, mode: options.mode ?? "python" }),
     signal: options.signal,
   })
 
