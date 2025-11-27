@@ -20,6 +20,9 @@ import { Image } from '@tiptap/extension-image'
 import { CustomImageView } from './custom-image-view'
 import { deleteFile } from './file-storage-manager'
 import { Markdown } from '@tiptap/markdown'
+import { Plugin } from '@tiptap/pm/state'
+import { Fragment, Slice } from '@tiptap/pm/model'
+import type { Node as PMNode, Schema } from '@tiptap/pm/model'
 
 import { TooltipProvider } from '@/components/ui/tooltip'
 import {
@@ -41,6 +44,79 @@ import BubbleMenuComponent from '@/components/tiptap/bubble-menu'
 import { createFileHandlerConfig } from '@/components/tiptap/file-handler'
 import { authClient } from '@/lib/auth-client'
 import { getMarkdownWithFileNodes, restoreFileNodes } from '@/components/tiptap/file-node-serialization'
+
+type CodeExecutionAttrs = {
+  lastOutput?: string
+  lastError?: string | null
+}
+
+function createExecutionCopyNodes(schema: Schema, attrs: CodeExecutionAttrs): PMNode[] {
+  const output = typeof attrs.lastOutput === 'string' ? attrs.lastOutput : ''
+  const error = typeof attrs.lastError === 'string' ? attrs.lastError : ''
+  if (!output && !error) {
+    return []
+  }
+
+  const nodes: PMNode[] = []
+  const paragraphType = schema.nodes.paragraph
+  const codeBlockType = schema.nodes.codeBlock
+
+  if (!codeBlockType) {
+    return nodes
+  }
+
+  const addSection = (label: string, content: string) => {
+    if (!content) return
+
+    if (paragraphType) {
+      nodes.push(paragraphType.create({}, schema.text(label)))
+    }
+
+    nodes.push(
+      codeBlockType.create(
+        { language: null },
+        schema.text(content)
+      )
+    )
+  }
+
+  addSection('Execution output:', output)
+  addSection('Execution error:', error)
+
+  return nodes
+}
+
+function appendExecutionDataToFragment(fragment: Fragment, schema: Schema, codeBlockName: string) {
+  let changed = false
+  const nodes: PMNode[] = []
+
+  fragment.forEach((node) => {
+    let currentNode = node
+    if (node.content.size) {
+      const { fragment: childFragment, changed: childChanged } = appendExecutionDataToFragment(node.content, schema, codeBlockName)
+      if (childChanged) {
+        currentNode = node.copy(childFragment)
+        changed = true
+      }
+    }
+
+    nodes.push(currentNode)
+
+    if (currentNode.type.name === codeBlockName) {
+      const extras = createExecutionCopyNodes(schema, currentNode.attrs as CodeExecutionAttrs)
+      if (extras.length) {
+        nodes.push(...extras)
+        changed = true
+      }
+    }
+  })
+
+  if (!changed) {
+    return { fragment, changed }
+  }
+
+  return { fragment: Fragment.fromArray(nodes), changed }
+}
 
 const lowlight = createLowlight(common)
 const CustomCodeBlock = CodeBlockLowlight.extend({
@@ -75,6 +151,30 @@ const CustomCodeBlock = CodeBlockLowlight.extend({
   },
   addNodeView() {
     return ReactNodeViewRenderer(CodeBlock)
+  },
+  addProseMirrorPlugins() {
+    const parentPlugins = this.parent?.() || []
+    const extension = this
+
+    const copyPlugin = new Plugin({
+      props: {
+        transformCopied(slice) {
+          const schema = extension.editor?.schema
+          if (!schema) {
+            return slice
+          }
+
+          const { fragment, changed } = appendExecutionDataToFragment(slice.content, schema, extension.name)
+          if (!changed) {
+            return slice
+          }
+
+          return new Slice(fragment, slice.openStart, slice.openEnd)
+        },
+      },
+    })
+
+    return [...parentPlugins, copyPlugin]
   },
 })
 

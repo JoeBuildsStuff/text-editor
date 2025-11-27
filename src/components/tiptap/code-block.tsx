@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { NodeViewProps } from '@tiptap/react'
 import { NodeViewContent, NodeViewWrapper } from '@tiptap/react'
 import {
@@ -21,6 +21,24 @@ function formatStderrChunk(chunk: string) {
   return chunk.replace(/^/gm, (line) => `[stderr] ${line}`)
 }
 
+function buildCopyPayload(code: string, lastOutput?: string, lastError?: string | null) {
+  const sections: string[] = []
+  const normalizedCode = code || ''
+  if (normalizedCode) {
+    sections.push(normalizedCode)
+  }
+
+  if (lastOutput) {
+    sections.push(`Execution output:\n${lastOutput}`)
+  }
+
+  if (lastError) {
+    sections.push(`Execution error:\n${lastError}`)
+  }
+
+  return sections.join('\n\n')
+}
+
 export function CodeBlock(props: NodeViewProps) {
   const languages = props.extension.options.lowlight.listLanguages()
   const codeExecution = (props.extension.options as { codeExecution?: { enabled?: boolean } }).codeExecution
@@ -31,6 +49,15 @@ export function CodeBlock(props: NodeViewProps) {
   const [error, setError] = useState<string | null>(props.node.attrs.lastError || null)
   const [isRunning, setIsRunning] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
+  const copyPayload = useMemo(
+    () =>
+      buildCopyPayload(
+        props.node.textContent,
+        props.node.attrs.lastOutput,
+        props.node.attrs.lastError
+      ),
+    [props.node.attrs.lastError, props.node.attrs.lastOutput, props.node.textContent]
+  )
   useEffect(() => {
     if (!isRunning) {
       setOutput(props.node.attrs.lastOutput || '')
@@ -169,7 +196,7 @@ export function CodeBlock(props: NodeViewProps) {
             </Button>
           )}
           <CopyButton
-            textToCopy={props.node.textContent}
+            textToCopy={copyPayload}
             successMessage="Code copied to clipboard"
             iconSize={16}
             className="size-8"
