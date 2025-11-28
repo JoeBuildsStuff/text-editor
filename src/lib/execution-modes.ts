@@ -1,4 +1,4 @@
-export const EXECUTION_MODES = ["python", "bash"] as const
+export const EXECUTION_MODES = ["python", "bash", "node", "typescript"] as const
 
 export type ExecutionMode = (typeof EXECUTION_MODES)[number]
 

@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button'
 import { Play, X } from 'lucide-react'
 
 import { streamPythonExecution } from '@/lib/python-executor'
+import { type ExecutionMode } from '@/lib/execution-modes'
 import Spinner from '../ui/spinner'
 import { buildProcessExitMessage, formatStderrChunk } from '@/lib/python-output'
 
@@ -36,11 +37,38 @@ function buildCopyPayload(code: string, lastOutput?: string, lastError?: string 
   return sections.join('\n\n')
 }
 
+const LANGUAGE_EXECUTION_MODE: Record<string, ExecutionMode> = {
+  python: 'python',
+  py: 'python',
+  'python-repl': 'python',
+  bash: 'bash',
+  shell: 'bash',
+  sh: 'bash',
+  zsh: 'bash',
+  javascript: 'node',
+  js: 'node',
+  jsx: 'node',
+  mjs: 'node',
+  cjs: 'node',
+  node: 'node',
+  typescript: 'typescript',
+  ts: 'typescript',
+  tsx: 'typescript',
+}
+
+function resolveExecutionMode(language?: string | null): ExecutionMode | null {
+  if (!language) return null
+  const normalized = language.toLowerCase()
+  return LANGUAGE_EXECUTION_MODE[normalized] ?? null
+}
+
 export function CodeBlock(props: NodeViewProps) {
   const languages = props.extension.options.lowlight.listLanguages()
   const codeExecution = (props.extension.options as { codeExecution?: { enabled?: boolean } }).codeExecution
   const executionEnabled = Boolean(codeExecution?.enabled)
   const canRun = executionEnabled
+  const selectedLanguage = props.node.attrs.language || 'plaintext'
+  const executionMode = resolveExecutionMode(selectedLanguage) ?? 'python'
 
   const [output, setOutput] = useState(() => props.node.attrs.lastOutput || '')
   const [error, setError] = useState<string | null>(props.node.attrs.lastError || null)
@@ -122,7 +150,7 @@ export function CodeBlock(props: NodeViewProps) {
             props.updateAttributes({ lastOutput: accumulatedOutput, lastError: message })
           },
         },
-        { signal: controller.signal }
+        { signal: controller.signal, mode: executionMode }
       )
     } catch (err) {
       if ((err as DOMException)?.name === 'AbortError') {
@@ -144,10 +172,7 @@ export function CodeBlock(props: NodeViewProps) {
   return (
     <NodeViewWrapper className="bg-background code-block group relative mb-4 rounded-lg border border-border">
       <div className="flex flex-wrap items-center border-b border-border bg-muted/20 rounded-t-lg px-3 py-2">
-        <Select
-          defaultValue={props.node.attrs.language || 'plaintext'}
-          onValueChange={handleLanguageChange}
-        >
+        <Select value={selectedLanguage} onValueChange={handleLanguageChange}>
           <SelectTrigger className="h-8 w-40 border-input bg-background text-xs">
             <SelectValue placeholder="Language" />
           </SelectTrigger>

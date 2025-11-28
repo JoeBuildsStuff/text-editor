@@ -51,6 +51,8 @@ server/*.sqlite-*
 # User documents and content (keep .gitkeep to maintain directory structure)
 server/documents/**
 !server/documents/.gitkeep
+server/python-sandbox/**
+!server/python-sandbox/.gitkeep
 
 # User uploads (images, attachments, etc.)
 server/uploads/**

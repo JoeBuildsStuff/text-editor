@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { spawn } from "node:child_process"
+import { existsSync } from "node:fs"
 import { mkdir } from "node:fs/promises"
 import path from "node:path"
 
@@ -13,6 +14,7 @@ const RATE_LIMIT_MAX_REQUESTS = 5
 const SANDBOX_ROOT =
   process.env.PYTHON_SANDBOX_DIR ?? path.join(process.cwd(), "server", "python-sandbox")
 const PYTHON_DOCKER_IMAGE = process.env.PYTHON_DOCKER_IMAGE ?? "python:3.11-slim"
+const NODE_DOCKER_IMAGE = process.env.NODE_DOCKER_IMAGE ?? "node:22-slim"
 
 const SAFE_ENV_KEYS = ["PATH", "PYTHONPATH", "HOME", "LANG"] as const
 const SANDBOX_USER_SEGMENT = /[^a-zA-Z0-9_-]/g
@@ -82,61 +84,105 @@ async function ensureUserSandbox(userId: string) {
   return userDir
 }
 
+function resolveTsxBinary() {
+  const binName = process.platform === "win32" ? "tsx.cmd" : "tsx"
+  const tsxPath = path.join(process.cwd(), "node_modules", ".bin", binName)
+  if (!existsSync(tsxPath)) {
+    throw new Error(
+      "TypeScript execution requires the 'tsx' binary. Run `pnpm install` to install dependencies."
+    )
+  }
+  return tsxPath
+}
+
+function buildDockerCommand(mode: ExecutionMode, code: string, userSandboxDir: string) {
+  const runtimeArgs = (() => {
+    switch (mode) {
+      case "python":
+        return ["python3", "-I", "-c", code]
+      case "bash":
+        return ["bash", "-lc", code]
+      case "node":
+        return ["node", "-e", code]
+      case "typescript":
+        return ["node", "-e", code]
+    }
+  })()
+
+  const image = mode === "node" || mode === "typescript" ? NODE_DOCKER_IMAGE : PYTHON_DOCKER_IMAGE
+
+  return {
+    command: "docker",
+    args: [
+      "run",
+      "--rm",
+      "-i",
+      "--network",
+      "none",
+      "--read-only",
+      "--tmpfs",
+      "/tmp:size=10M,mode=1777,noexec",
+      "--cap-drop",
+      "ALL",
+      "--security-opt",
+      "no-new-privileges",
+      "--memory",
+      "128m",
+      "--memory-swap",
+      "128m",
+      "--cpus",
+      "0.5",
+      "--pids-limit",
+      "50",
+      "--user",
+      "nobody:nogroup",
+      "--device",
+      "/dev/null:/dev/null",
+      "--device",
+      "/dev/zero:/dev/zero",
+      "--device",
+      "/dev/urandom:/dev/urandom",
+      "-e",
+      "PYTHONUNBUFFERED=1",
+      "-v",
+      `${userSandboxDir}:/sandbox:rw`,
+      "-w",
+      "/sandbox",
+      image,
+      ...runtimeArgs,
+    ],
+  }
+}
+
+function buildLocalCommand(mode: ExecutionMode, code: string) {
+  switch (mode) {
+    case "python":
+      return { command: "python3", args: ["-I", "-c", code] }
+    case "bash":
+      return { command: "bash", args: ["-lc", code] }
+    case "node":
+      return { command: "node", args: ["-e", code] }
+    case "typescript": {
+      const tsxBinary = resolveTsxBinary()
+      return { command: tsxBinary, args: ["--eval", code] }
+    }
+  }
+}
+
 function buildSandboxCommand(
   mode: ExecutionMode,
   code: string,
   userSandboxDir: string
 ): { command: string; args: string[] } {
   if (HARDENED_SANDBOX_ENABLED) {
-    const runtimeArgs =
-      mode === "python"
-        ? ["python3", "-I", "-c", code]
-        : ["bash", "-lc", code]
-
-    return {
-      command: "docker",
-      args: [
-        "run",
-        "--rm",
-        "-i",
-        "--network",
-        "none",
-        "--read-only",
-        "--tmpfs",
-        "/tmp:size=10M,mode=1777,noexec",
-        "--cap-drop",
-        "ALL",
-        "--security-opt",
-        "no-new-privileges",
-        "--memory",
-        "128m",
-        "--memory-swap",
-        "128m",
-        "--cpus",
-        "0.5",
-        "--pids-limit",
-        "50",
-        "--user",
-        "nobody:nogroup",
-        "--device",
-        "/dev/null:/dev/null",
-        "--device",
-        "/dev/zero:/dev/zero",
-        "--device",
-        "/dev/urandom:/dev/urandom",
-        "-e",
-        "PYTHONUNBUFFERED=1",
-        "-v",
-        `${userSandboxDir}:/sandbox:rw`,
-        "-w",
-        "/sandbox",
-        PYTHON_DOCKER_IMAGE,
-        ...runtimeArgs,
-      ],
-    }
+    return buildDockerCommand(mode, code, userSandboxDir)
   }
 
-  return { command: "python3", args: ["-I", "-c", code] }
+  const command = buildLocalCommand(mode, code)
+  if (!command) {
+    throw new Error("Unsupported execution mode")
+  }
+  return command
 }
 
 export async function POST(request: Request) {
@@ -171,17 +217,30 @@ export async function POST(request: Request) {
     )
   }
 
+  if (mode === "typescript" && HARDENED_SANDBOX_ENABLED) {
+    return NextResponse.json(
+      { error: "TypeScript execution is not available while ENABLE_PYTHON_SANDBOX=true" },
+      { status: 400 }
+    )
+  }
+
   if (typeof code !== "string" || !code.trim()) {
     return NextResponse.json({ error: "Command text is required" }, { status: 400 })
   }
 
   const userSandboxDir = await ensureUserSandbox(session.user.id)
   const sandboxEnv = buildSandboxEnv()
-  const { command, args } = buildSandboxCommand(mode, code, userSandboxDir)
+  let sandboxCommand: { command: string; args: string[] }
+  try {
+    sandboxCommand = buildSandboxCommand(mode, code, userSandboxDir)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to prepare runtime"
+    return NextResponse.json({ error: message }, { status: 400 })
+  }
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
-      const child = spawn(command, args, {
+      const child = spawn(sandboxCommand.command, sandboxCommand.args, {
         cwd: userSandboxDir,
         env: sandboxEnv,
         stdio: ["ignore", "pipe", "pipe"],

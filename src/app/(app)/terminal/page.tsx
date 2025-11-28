@@ -13,6 +13,20 @@ import { streamPythonExecution } from "@/lib/python-executor";
 import { buildProcessExitMessage, formatStderrChunk } from "@/lib/python-output";
 import { EXECUTION_MODES, type ExecutionMode } from "@/lib/execution-modes";
 
+const MODE_LABELS: Record<ExecutionMode, string> = {
+  python: "Python",
+  bash: "Bash shell",
+  node: "Node.js",
+  typescript: "TypeScript",
+};
+
+const MODE_PLACEHOLDERS: Record<ExecutionMode, string> = {
+  python: "Type Python code and press Enter (or 'clear' to clear history)",
+  bash: "Type shell commands and press Enter (or 'clear' to reset)",
+  node: "Type JavaScript and press Enter (or 'clear' to reset)",
+  typescript: "Type TypeScript/JS and press Enter (or 'clear' to reset)",
+};
+
 type HistoryItem = {
   id: number;
   command: string;
@@ -147,10 +161,7 @@ export default function TerminalPage() {
     }
   }
 
-  const placeholder =
-    mode === "python"
-      ? "Type Python code and press Enter (or 'clear' to clear history)"
-      : "Type shell commands and press Enter (or 'clear' to reset)";
+  const placeholder = MODE_PLACEHOLDERS[mode] ?? MODE_PLACEHOLDERS.python;
 
   return (
     <div className="h-full w-full flex flex-col font-mono">
@@ -163,7 +174,7 @@ export default function TerminalPage() {
           <SelectContent>
             {EXECUTION_MODES.map((value) => (
               <SelectItem key={value} value={value}>
-                {value === "python" ? "Python" : "Bash shell"}
+                {MODE_LABELS[value]}
               </SelectItem>
             ))}
           </SelectContent>
@@ -180,7 +191,7 @@ export default function TerminalPage() {
                 <div className="flex flex-col gap-1 w-full">
                   <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                     <span className="uppercase tracking-wide">
-                      {item.mode === "python" ? "PYTHON" : "BASH"}
+                      {MODE_LABELS[item.mode]?.toUpperCase() ?? item.mode.toUpperCase()}
                     </span>
                     {item.isExecuting && (
                       <span className="animate-pulse">Running…</span>
