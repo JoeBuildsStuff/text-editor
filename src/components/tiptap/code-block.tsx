@@ -226,6 +226,13 @@ export function CodeBlock(props: NodeViewProps) {
   }
 
   const hasOutput = Boolean(error) || (!previewEnabled && Boolean(output)) || (previewEnabled && previewRendered)
+  const lineNumbers = useMemo(() => {
+    const text = props.node.textContent ?? ''
+    const count = text ? text.split(/\r?\n/).length : 1
+    const lines: number[] = []
+    for (let i = 1; i <= count; i++) lines.push(i)
+    return lines.join('\n')
+  }, [props.node.textContent])
 
   return (
     <NodeViewWrapper className="bg-background code-block group relative mb-4 rounded-lg border border-border">
@@ -283,9 +290,14 @@ export function CodeBlock(props: NodeViewProps) {
           />
         </div>
       </div>
-      <pre className="">
-        <NodeViewContent className="hljs" />
-      </pre>
+      <div className="flex text-sm leading-6">
+        <div className="select-none border-r border-border bg-muted/40 px-3 py-2 text-right text-muted-foreground tabular-nums text-sm whitespace-pre leading-6">
+          {lineNumbers}
+        </div>
+        <pre className="flex-1 overflow-auto leading-6">
+          <NodeViewContent className="hljs px-3 py-2" />
+        </pre>
+      </div>
       {executionEnabled && (
         <div className={`border-t border-border text-xs font-mono ${hasOutput ? '' : 'px-3 py-2'}`}>
           {error ? (

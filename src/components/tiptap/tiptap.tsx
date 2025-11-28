@@ -297,6 +297,10 @@ const Tiptap = ({
           "[&_pre_code]:!px-0",
           "[&_pre_code]:!py-0",
           "[&_pre_code]:!rounded-none",
+          // Ensure prose defaults don't add spacing around code blocks
+          "[&_pre]:!m-0",
+          "[&_pre]:!bg-transparent",
+          "[&_pre]:!p-0",
         ].join(" "),
       },
       handleKeyDown: (_view, event) => {
