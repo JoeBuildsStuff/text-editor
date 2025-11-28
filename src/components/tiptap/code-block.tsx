@@ -62,18 +62,51 @@ function resolveExecutionMode(language?: string | null): ExecutionMode | null {
   return LANGUAGE_EXECUTION_MODE[normalized] ?? null
 }
 
+const PREVIEW_LANGUAGES = new Set(['html', 'htm', 'xml', 'svg', 'css'])
+const DEFAULT_PREVIEW_DOCUMENT = `<!doctype html><html><head><meta charset="utf-8" /><style>html,body{margin:0;padding:0;background:#f8fafc;color:#475569;font-family:system-ui,sans-serif;}body{display:flex;align-items:center;justify-content:center;min-height:200px;}p{opacity:0.6;font-size:14px;}</style></head><body><p>Run this block to see the preview.</p></body></html>`
+
+function buildPreviewDocument(language: string, code: string) {
+  const normalized = language.toLowerCase()
+  if (normalized === 'css') {
+    return `<!doctype html><html><head><meta charset="utf-8" /><style>html,body{margin:0;padding:0;background:#0f172a;color:#f8fafc;font-family:system-ui,sans-serif;min-height:100vh;}main{display:flex;flex-direction:column;gap:12px;padding:24px;} .preview-target{padding:24px;border-radius:12px;background:#f8fafc;color:#0f172a;text-align:center;font-weight:600;}</style><style>${code}</style></head><body><main><div class="preview-target">CSS Preview Target</div><div class="preview-target" style="background:#0ea5e9;color:white;">Another element</div></main></body></html>`
+  }
+
+  const trimmed = code.trim()
+  const hasHtmlShell = /<!doctype/i.test(trimmed) || /<html[\s>]/i.test(trimmed)
+  if (hasHtmlShell) {
+    return trimmed || DEFAULT_PREVIEW_DOCUMENT
+  }
+
+  const bodyContent = trimmed || '<p>Empty HTML snippet</p>'
+  return `<!doctype html><html><head><meta charset="utf-8" /><style>html,body{margin:0;padding:0;background:#ffffff;color:#0f172a;font-family:system-ui,sans-serif;}body{min-height:100vh;padding:24px;}code{background:#e2e8f0;padding:2px 6px;border-radius:6px;}</style></head><body>${bodyContent}</body></html>`
+}
+
+function isPreviewLanguage(language?: string | null) {
+  if (!language) return false
+  return PREVIEW_LANGUAGES.has(language.toLowerCase())
+}
+
+const EXTRA_LANGUAGES = ['html', 'css', 'javascript', 'typescript']
+
 export function CodeBlock(props: NodeViewProps) {
-  const languages = props.extension.options.lowlight.listLanguages()
+  const languages = useMemo(() => {
+    const base = props.extension.options.lowlight.listLanguages() as string[]
+    const deduped = new Set([...EXTRA_LANGUAGES, ...base])
+    return Array.from(deduped)
+  }, [props.extension.options.lowlight])
   const codeExecution = (props.extension.options as { codeExecution?: { enabled?: boolean } }).codeExecution
   const executionEnabled = Boolean(codeExecution?.enabled)
   const canRun = executionEnabled
   const selectedLanguage = props.node.attrs.language || 'plaintext'
   const executionMode = resolveExecutionMode(selectedLanguage) ?? 'python'
+  const previewEnabled = isPreviewLanguage(selectedLanguage)
 
   const [output, setOutput] = useState(() => props.node.attrs.lastOutput || '')
   const [error, setError] = useState<string | null>(props.node.attrs.lastError || null)
   const [isRunning, setIsRunning] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
+  const [previewRendered, setPreviewRendered] = useState(false)
+  const [previewDoc, setPreviewDoc] = useState(DEFAULT_PREVIEW_DOCUMENT)
   const copyPayload = useMemo(
     () =>
       buildCopyPayload(
@@ -90,6 +123,10 @@ export function CodeBlock(props: NodeViewProps) {
     }
   }, [isRunning, props.node.attrs.lastError, props.node.attrs.lastOutput])
   useEffect(() => {
+    setPreviewRendered(false)
+    setPreviewDoc(DEFAULT_PREVIEW_DOCUMENT)
+  }, [selectedLanguage])
+  useEffect(() => {
     return () => {
       abortControllerRef.current?.abort()
     }
@@ -102,6 +139,8 @@ export function CodeBlock(props: NodeViewProps) {
   const handleClearOutput = () => {
     setOutput('')
     setError(null)
+    setPreviewRendered(false)
+    setPreviewDoc(DEFAULT_PREVIEW_DOCUMENT)
     props.updateAttributes({ lastOutput: '', lastError: null })
   }
 
@@ -122,6 +161,25 @@ export function CodeBlock(props: NodeViewProps) {
     setError(null)
 
     abortControllerRef.current?.abort()
+    abortControllerRef.current = null
+
+    if (previewEnabled) {
+      try {
+        const documentHtml = buildPreviewDocument(selectedLanguage, code)
+        setPreviewDoc(documentHtml)
+        setPreviewRendered(true)
+        props.updateAttributes({ lastOutput: '', lastError: null })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to render preview'
+        setError(message)
+        setPreviewRendered(false)
+        props.updateAttributes({ lastOutput: '', lastError: message })
+      } finally {
+        setIsRunning(false)
+      }
+      return
+    }
+
     const controller = new AbortController()
     abortControllerRef.current = controller
 
@@ -167,7 +225,7 @@ export function CodeBlock(props: NodeViewProps) {
     }
   }
 
-  const hasOutput = Boolean(output) || Boolean(error)
+  const hasOutput = Boolean(error) || (!previewEnabled && Boolean(output)) || (previewEnabled && previewRendered)
 
   return (
     <NodeViewWrapper className="bg-background code-block group relative mb-4 rounded-lg border border-border">
@@ -229,9 +287,24 @@ export function CodeBlock(props: NodeViewProps) {
         <NodeViewContent className="hljs" />
       </pre>
       {executionEnabled && (
-        <div className={`border-t border-border  text-xs font-mono ${hasOutput ? '' : 'px-3 py-2'}`}>
+        <div className={`border-t border-border text-xs font-mono ${hasOutput ? '' : 'px-3 py-2'}`}>
           {error ? (
             <span className="text-destructive px-2 py-1">{error}</span>
+          ) : previewEnabled ? (
+            <div className="w-full">
+              <iframe
+                title="Code block preview"
+                sandbox="allow-scripts"
+                referrerPolicy="no-referrer"
+                className={`w-full border-0 rounded-b-lg min-h-[12rem] ${previewRendered ? 'block' : 'hidden'}`}
+                srcDoc={previewDoc}
+              />
+              {!previewRendered && (
+                <div className="px-4 py-2 text-muted-foreground">
+                  {isRunning ? 'Rendering preview…' : 'Run this block to see the preview.'}
+                </div>
+              )}
+            </div>
           ) : output ? (
             <div className="m-0 px-4 py-2 whitespace-pre-wrap wrap-break-word text-xs">{output}</div>
           ) : isRunning ? (
