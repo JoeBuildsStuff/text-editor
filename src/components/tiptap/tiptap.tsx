@@ -44,6 +44,7 @@ import BubbleMenuComponent from '@/components/tiptap/bubble-menu'
 import { createFileHandlerConfig } from '@/components/tiptap/file-handler'
 import { authClient } from '@/lib/auth-client'
 import { getMarkdownWithFileNodes, restoreFileNodes } from '@/components/tiptap/file-node-serialization'
+import { cn } from '@/lib/utils'
 
 type CodeExecutionAttrs = {
   lastOutput?: string
@@ -194,6 +195,8 @@ const Tiptap = ({
   fileUploadConfig,
   enableFileNodes = true,
   enableCodeExecution = false,
+  readonly = false,
+  className,
 }: TiptapProps) => {
   // Track the currently selected node for drag handle functionality
   const [, setSelectedNode] = useState<{ type: { name: string } } | null>(null)
@@ -201,6 +204,7 @@ const Tiptap = ({
   const userId = sessionState.data?.user?.id
 
   const editor = useEditor({
+    editable: !readonly,
     extensions: [
         Markdown,
         StarterKit,
@@ -401,11 +405,11 @@ const Tiptap = ({
 
     // Editor
     return (
-        <div className='relative border border-border rounded-md bg-card h-full w-full flex flex-col'>
+        <div className={cn('relative border border-border rounded-md bg-card h-full w-full flex flex-col', className)}>
             <TooltipProvider>
 
                 {/* start fixed menu */}
-                {showFixedMenu && (
+                {showFixedMenu && !readonly && (
                     <div className='sticky top-0 z-10 bg-card/80 backdrop-blur-lg rounded-lg'>
                         <FixedMenu editor={editor} />
                     </div>
@@ -413,11 +417,11 @@ const Tiptap = ({
                 {/* end fixed menu */}
 
                 {/* start bubble menu */}
-                {showBubbleMenu && <BubbleMenuComponent editor={editor} />}
+                {showBubbleMenu && !readonly && <BubbleMenuComponent editor={editor} />}
                 {/* end bubble menu */}
 
                 {/* start drag handle */}
-                {showDragHandle && (
+                {showDragHandle && !readonly && (
                   <DragHandle
                     editor={editor}
                     onNodeChange={({ node }) => {

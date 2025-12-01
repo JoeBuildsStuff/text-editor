@@ -23,6 +23,10 @@ export interface TiptapProps {
   enableFileNodes?: boolean
   /** Enables executable code blocks with run controls */
   enableCodeExecution?: boolean
+  /** Whether the editor is readonly (non-editable) */
+  readonly?: boolean
+  /** Additional CSS classes for the root container */
+  className?: string
 }
 
 export interface FileUploadResult {
