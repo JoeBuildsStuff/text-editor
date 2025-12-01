@@ -45,12 +45,15 @@ export async function streamPythonExecution(
   callbacks: PythonExecutionCallbacks = {},
   options: StreamOptions = {}
 ) {
-  const response = await fetch("/api/python-exec", {
+  const fetchOptions: RequestInit = {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ code, mode: options.mode ?? "python" }),
-    signal: options.signal,
-  })
+  }
+  if (options.signal) {
+    fetchOptions.signal = options.signal
+  }
+  const response = await fetch("/api/python-exec", fetchOptions)
 
   if (!response.ok) {
     let message = "Failed to execute code"

@@ -24,9 +24,14 @@ ENABLE_PYTHON_SANDBOX=false
 NODE_ENV=production
 ENABLE_PYTHON_SANDBOX=true
 PYTHON_DOCKER_IMAGE=python:3.11-slim
+
+# Optional: Allow network access for pip/npm (default: false)
+# WARNING: Enables full network access - see security analysis below
+ALLOW_SANDBOX_NETWORK=false
 ```
 
-`PYTHON_DOCKER_IMAGE` is optional (defaults to `python:3.11-slim`) but is useful if you maintain an internal hardened image.
+- `PYTHON_DOCKER_IMAGE` is optional (defaults to `python:3.11-slim`) but is useful if you maintain an internal hardened image.
+- `ALLOW_SANDBOX_NETWORK=true` enables network access, allowing `pip install` and `npm install` at runtime. See `docs/network-access-security-analysis.md` for security implications.
 
 ## docker-compose Configuration
 

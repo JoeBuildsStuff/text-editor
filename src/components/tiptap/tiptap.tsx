@@ -161,17 +161,16 @@ const CustomCodeBlock = CodeBlockLowlight.extend<CustomCodeBlockOptions>({
   },
   addProseMirrorPlugins() {
     const parentPlugins = this.parent?.() || []
-    const extension = this
 
     const copyPlugin = new Plugin({
       props: {
-        transformCopied(slice) {
-          const schema = extension.editor?.schema
+        transformCopied: (slice) => {
+          const schema = this.editor?.schema
           if (!schema) {
             return slice
           }
 
-          const { fragment, changed } = appendExecutionDataToFragment(slice.content, schema, extension.name)
+          const { fragment, changed } = appendExecutionDataToFragment(slice.content, schema, this.name)
           if (!changed) {
             return slice
           }

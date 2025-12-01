@@ -799,6 +799,9 @@ export async function renameFolder(folderPathInput: string, newNameInput: string
   // Build new folder path
   const parentSegments = sanitizedOldPath.split("/").slice(0, -1)
   const newBaseName = newNameSegments[0]
+  if (!newBaseName) {
+    throw new MarkdownFileOperationError("Folder name must contain alphanumeric characters", 422)
+  }
   const newFolderPath = parentSegments.length > 0
     ? `${parentSegments.join("/")}/${newBaseName}`
     : newBaseName

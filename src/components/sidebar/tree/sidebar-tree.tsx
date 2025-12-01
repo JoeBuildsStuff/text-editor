@@ -11,7 +11,7 @@ import {
   type DragStartEvent,
   type DragEndEvent,
   type DragCancelEvent,
-  type SensorDescriptor,
+  useSensors,
   defaultDropAnimationSideEffects,
   type DropAnimationFunction,
 } from "@dnd-kit/core"
@@ -52,7 +52,7 @@ export type SidebarTreeProps = {
   onRenameFolder: (folderPath: string, currentName: string) => void
   onRenameDocument: (documentId: string, currentName: string) => void
   onSelect: (slug: string) => void
-  sensors: SensorDescriptor<any>[]
+  sensors: ReturnType<typeof useSensors>
   collisionDetection: CollisionDetection
   onDragStart?: (event: DragStartEvent) => void
   onDragEnd?: (event: DragEndEvent) => void

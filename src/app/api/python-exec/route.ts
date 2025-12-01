@@ -10,7 +10,7 @@ import type { ExecutionMode } from "@/lib/execution-modes"
 
 const EXECUTION_TIMEOUT_MS = 10_000
 const RATE_LIMIT_WINDOW_MS = 60_000
-const RATE_LIMIT_MAX_REQUESTS = 5
+const RATE_LIMIT_MAX_REQUESTS = 60
 const SANDBOX_ROOT =
   process.env.PYTHON_SANDBOX_DIR ?? path.join(process.cwd(), "server", "python-sandbox")
 const PYTHON_DOCKER_IMAGE = process.env.PYTHON_DOCKER_IMAGE ?? "python:3.11-slim"
@@ -23,6 +23,7 @@ const textEncoder = new TextEncoder()
 const HARDENED_SANDBOX_ENABLED =
   // process.env.NODE_ENV === "production" &&
   process.env.ENABLE_PYTHON_SANDBOX === "true"
+const ALLOW_SANDBOX_NETWORK = process.env.ALLOW_SANDBOX_NETWORK === "true"
 
 type RateLimiterEntry = {
   windowStart: number
@@ -121,7 +122,7 @@ function buildDockerCommand(mode: ExecutionMode, code: string, userSandboxDir: s
       "--rm",
       "-i",
       "--network",
-      "none",
+      ALLOW_SANDBOX_NETWORK ? "bridge" : "none",
       "--read-only",
       "--tmpfs",
       "/tmp:size=10M,mode=1777,noexec",
