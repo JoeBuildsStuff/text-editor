@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
   try {
     const result = await saveUploadedFile(file, {
       userId: session.user.id,
-      pathPrefix: typeof pathPrefix === "string" ? pathPrefix : undefined,
+      pathPrefix: typeof pathPrefix === "string" ? pathPrefix : null,
     })
 
     return NextResponse.json({

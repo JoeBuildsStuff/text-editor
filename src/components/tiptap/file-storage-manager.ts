@@ -8,9 +8,15 @@ import { ALLOWED_UPLOAD_MIME_TYPES, DEFAULT_UPLOAD_PATH_PREFIX, FILE_UPLOAD_MAX_
  */
 
 export interface FileUploadOptions {
-  pathPrefix?: string
-  maxFileSize?: number
-  allowedMimeTypes?: string[]
+  pathPrefix?: string | undefined
+  maxFileSize?: number | undefined
+  allowedMimeTypes?: string[] | undefined
+}
+
+type ResolvedFileUploadOptions = {
+  pathPrefix: string
+  maxFileSize: number
+  allowedMimeTypes: string[]
 }
 
 export interface FileUploadResult {
@@ -31,7 +37,7 @@ export interface FileServeResult {
   error?: string
 }
 
-const DEFAULT_OPTIONS: Required<FileUploadOptions> = {
+const DEFAULT_OPTIONS: ResolvedFileUploadOptions = {
   pathPrefix: DEFAULT_UPLOAD_PATH_PREFIX,
   maxFileSize: FILE_UPLOAD_MAX_BYTES,
   allowedMimeTypes: ALLOWED_UPLOAD_MIME_TYPES,
@@ -44,7 +50,7 @@ export async function uploadFile(
   file: File,
   options: Partial<FileUploadOptions> = {}
 ): Promise<FileUploadResult> {
-  const config: Required<FileUploadOptions> = {
+  const config: ResolvedFileUploadOptions = {
     pathPrefix: options.pathPrefix ?? DEFAULT_OPTIONS.pathPrefix,
     maxFileSize:
       typeof options.maxFileSize === "number" && options.maxFileSize > 0

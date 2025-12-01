@@ -83,7 +83,12 @@ export async function POST(request: Request) {
   }
 
   try {
-    const user = await createUserWithPassword({ email, password, name, isAdmin });
+    const user = await createUserWithPassword({
+      email,
+      password,
+      name: name ?? null,
+      isAdmin: Boolean(isAdmin),
+    });
     const refreshed = listAdminUsers().find((u) => u.id === user.id) ?? user;
     recordAdminAction({
       actorUserId: session.user.id,

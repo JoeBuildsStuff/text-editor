@@ -57,7 +57,7 @@ export function useTreeReorder(folders: MarkdownFolder[]) {
         const nextSortOrder = computeSortOrderBetween(prev?.sortOrder, next?.sortOrder)
         assignments.set(options.onlyMoveId, nextSortOrder)
 
-        const moved = items[index]
+        const moved = items[index]!
         const dbId =
           moved.kind === "document" ? moved.documentId : getFolderIdByPath(moved.folderPath)
 

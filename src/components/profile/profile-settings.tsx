@@ -379,7 +379,7 @@ export function ProfileSettings({ user }: ProfileSettingsProps) {
                       </div>
                       <FormControl>
                         <Switch
-                          checked={field.value}
+                          checked={Boolean(field.value)}
                           onCheckedChange={(checked) => field.onChange(Boolean(checked))}
                         />
                       </FormControl>

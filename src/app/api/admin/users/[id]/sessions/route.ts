@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
 import { deleteSessionsForUser, recordAdminAction } from "@/lib/auth/admin";
 import { getSessionFromHeaders } from "@/lib/auth/session";
@@ -19,7 +19,11 @@ function clientIp(headers: Headers) {
   );
 }
 
-export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+export async function DELETE(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  const params = await context.params;
   const session = await getSessionFromHeaders(request.headers);
   if (!session) return unauthorized();
   if (!session.user.isAdmin) return forbidden();

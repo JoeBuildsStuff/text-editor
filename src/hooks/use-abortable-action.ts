@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef } from "react"
  */
 export function useAbortableAction<T extends (...args: never[]) => Promise<unknown>>(
   action: (signal: AbortSignal, ...args: Parameters<T>) => ReturnType<T>
-): [T, () => void] {
+): [((...args: Parameters<T>) => ReturnType<T>), () => void] {
   const controllerRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
@@ -14,16 +14,13 @@ export function useAbortableAction<T extends (...args: never[]) => Promise<unkno
     }
   }, [])
 
-  const wrappedAction = useCallback(
-    (...args: Parameters<T>) => {
-      controllerRef.current?.abort("Superseded by new request")
-      controllerRef.current = new AbortController()
+  const wrappedAction = useCallback((...args: Parameters<T>): ReturnType<T> => {
+    controllerRef.current?.abort("Superseded by new request")
+    controllerRef.current = new AbortController()
 
-      const signal = controllerRef.current.signal
-      return action(signal, ...args)
-    },
-    [action]
-  ) as T
+    const signal = controllerRef.current.signal
+    return action(signal, ...args)
+  }, [action])
 
   const abort = useCallback(() => {
     controllerRef.current?.abort("Manually aborted")

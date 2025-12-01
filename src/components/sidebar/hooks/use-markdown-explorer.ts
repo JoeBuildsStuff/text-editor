@@ -148,7 +148,7 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
     }
 
     startActionTransition(() => {
-      submitRenameAction().catch((error) => {
+      submitRenameAction().catch((error: unknown) => {
         if (error instanceof DOMException && error.name === "AbortError") {
           return
         }

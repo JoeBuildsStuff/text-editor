@@ -106,7 +106,7 @@ export function SignInForm() {
             <FormItem className="flex items-center space-x-2 space-y-0">
               <FormControl>
                 <Checkbox
-                  checked={field.value}
+                  checked={Boolean(field.value)}
                   onCheckedChange={(checked) => field.onChange(Boolean(checked))}
                 />
               </FormControl>

@@ -45,7 +45,7 @@ export type MarkdownFileMeta = DocumentRecord & {
   filename: string
   relativePath: string
   slug: string
-  content?: string
+  content?: string | undefined
 }
 
 export function ensureMarkdownExtension(filename: string) {

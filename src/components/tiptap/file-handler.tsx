@@ -7,8 +7,8 @@ import { uploadFile } from './file-storage-manager'
 import type { TiptapFileUploadConfig } from './types'
 
 interface FileHandlerConfigProps {
-  onFileDrop?: (files: File[]) => void
-  fileUploadConfig?: TiptapFileUploadConfig
+  onFileDrop?: ((files: File[]) => void) | undefined
+  fileUploadConfig?: TiptapFileUploadConfig | undefined
 }
 
 export const createFileHandlerConfig = ({ onFileDrop, fileUploadConfig }: FileHandlerConfigProps = {}) => {

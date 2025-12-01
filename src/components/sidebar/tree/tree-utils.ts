@@ -182,7 +182,7 @@ export function traverseTree<T>(
     depth: number
   ): T | undefined {
     for (let index = 0; index < currentElements.length; index += 1) {
-      const element = currentElements[index]
+      const element = currentElements[index]!
       const context: TraversalContext = {
         element,
         parent,

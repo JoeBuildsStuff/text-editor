@@ -3,7 +3,6 @@ import { toast } from "sonner"
 
 import {
   computeSortOrderBetween,
-  type SidebarTreeElement,
 } from "@/components/sidebar/tree/tree-utils"
 import type {
   DropIntoFolderMiddleScenario,
@@ -14,6 +13,7 @@ import type {
 import type {
   DocumentDragData,
   FolderDragData,
+  SidebarTreeElement,
 } from "@/components/sidebar/tree/tree-types"
 
 export type AssignSortOrdersFn = (
@@ -23,15 +23,15 @@ export type AssignSortOrdersFn = (
 
 export type DocumentMoveHandler = (options: {
   documentId: string
-  targetFolderPath?: string
-  sortOrder?: number
-  label?: string
+  targetFolderPath?: string | undefined
+  sortOrder?: number | undefined
+  label?: string | undefined
 }) => Promise<void>
 
 export type FolderMoveHandler = (options: {
   folderPath: string
-  targetFolderPath?: string
-  sortOrder?: number
+  targetFolderPath?: string | undefined
+  sortOrder?: number | undefined
 }) => Promise<void>
 
 export async function handleReorderSameParent(
@@ -156,12 +156,13 @@ function buildPlaceholderFromDragData(data: DragDataForPlaceholder): SidebarTree
     }
   }
 
+  const folderPath = typeof data.folderPath === "string" ? data.folderPath : undefined
   return {
-    id: data.folderPath ?? data.label,
+    id: folderPath ?? data.label,
     name: data.label,
     isSelectable: true,
     kind: "folder",
-    folderPath: data.folderPath,
+    ...(folderPath !== undefined ? { folderPath } : {}),
     sortOrder: data.sortOrder,
     children: [],
   }

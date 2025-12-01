@@ -41,18 +41,18 @@ import { DOCUMENT_DROP_SPLIT, DROP_ANIMATION_DURATION_MS } from "@/components/si
 
 export type SidebarTreeProps = {
   elements: SidebarTreeElement[]
-  selectedSlug?: string
+  selectedSlug?: string | undefined
   openFolders: Set<string>
   onToggleFolder: (folderId: string) => void
   isActionPending: boolean
-  onCreateDocument: (folderPath?: string) => void
-  onCreateFolder: (folderPath?: string) => void
+  onCreateDocument: (folderPath?: string | undefined) => void
+  onCreateFolder: (folderPath?: string | undefined) => void
   onDeleteFolder: (folderPath: string) => void
-  onDeleteDocument: (documentId: string, slug?: string) => void
+  onDeleteDocument: (documentId: string, slug?: string | undefined) => void
   onRenameFolder: (folderPath: string, currentName: string) => void
   onRenameDocument: (documentId: string, currentName: string) => void
   onSelect: (slug: string) => void
-  sensors: SensorDescriptor[]
+  sensors: SensorDescriptor<any>[]
   collisionDetection: CollisionDetection
   onDragStart?: (event: DragStartEvent) => void
   onDragEnd?: (event: DragEndEvent) => void
@@ -62,14 +62,14 @@ export type SidebarTreeProps = {
 
 type TreeRenderOptions = {
   onSelect: (slug: string) => void
-  selectedSlug?: string
+  selectedSlug?: string | undefined
   openFolders: Set<string>
   onToggleFolder: (folderId: string) => void
   isActionPending: boolean
-  onCreateDocument: (folderPath?: string) => void
-  onCreateFolder: (folderPath?: string) => void
+  onCreateDocument: (folderPath?: string | undefined) => void
+  onCreateFolder: (folderPath?: string | undefined) => void
   onDeleteFolder: (folderPath: string) => void
-  onDeleteDocument: (documentId: string, slug?: string) => void
+  onDeleteDocument: (documentId: string, slug?: string | undefined) => void
   onRenameFolder: (folderPath: string, currentName: string) => void
   onRenameDocument: (documentId: string, currentName: string) => void
   isNested?: boolean

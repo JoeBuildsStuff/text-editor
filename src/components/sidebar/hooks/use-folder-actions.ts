@@ -17,23 +17,23 @@ import { useLatestValue } from "@/hooks/use-latest-value"
 import { getLastPathSegment } from "@/lib/path-utils"
 
 export type FolderActions = {
-  create: (parentPath?: string) => void
+  create: (parentPath?: string | undefined) => void
   delete: (folderPath: string) => void
   move: (options: {
     folderPath: string
-    targetFolderPath?: string
-    sortOrder?: number
+    targetFolderPath?: string | undefined
+    sortOrder?: number | undefined
   }) => Promise<void>
 }
 
 export type FolderActionDeps = {
   updateIndex: (updater: (current: MarkdownIndexResult) => MarkdownIndexResult) => void
   invalidateData: () => Promise<void>
-  openFolderPath: (folderPath?: string) => void
+  openFolderPath: (folderPath?: string | undefined) => void
   closeFolderPath: (folderPath: string) => void
   navigateToSlug: (slug: string) => void
   navigateToDocuments: () => void
-  selectedSlug?: string
+  selectedSlug?: string | undefined
   startTransition: TransitionStartFunction
 }
 

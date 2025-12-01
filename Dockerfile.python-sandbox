@@ -1,0 +1,12 @@
+# Custom Python sandbox image with pre-installed packages
+FROM python:3.11-slim
+
+# Install packages you need for code execution
+RUN pip install --no-cache-dir openai
+
+# Optionally install other common packages
+# RUN pip install --no-cache-dir requests pandas numpy
+
+# The container will still run with --network none at runtime,
+# but these packages will be available since they're baked into the image
+

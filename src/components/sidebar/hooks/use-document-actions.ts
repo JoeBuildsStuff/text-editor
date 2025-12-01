@@ -15,13 +15,13 @@ import { useLatestValue } from "@/hooks/use-latest-value"
 import { getParentPath } from "@/lib/path-utils"
 
 export type DocumentActions = {
-  create: (folderPath?: string) => void
-  delete: (documentId: string, slug?: string) => void
+  create: (folderPath?: string | undefined) => void
+  delete: (documentId: string, slug?: string | undefined) => void
   move: (options: {
     documentId: string
-    targetFolderPath?: string
-    sortOrder?: number
-    label?: string
+    targetFolderPath?: string | undefined
+    sortOrder?: number | undefined
+    label?: string | undefined
   }) => Promise<void>
 }
 
@@ -30,10 +30,10 @@ export type DocumentActionDeps = {
     updater: (docs: MarkdownDocument[]) => MarkdownDocument[]
   ) => void
   invalidateData: () => Promise<void>
-  openFolderPath: (folderPath?: string) => void
+  openFolderPath: (folderPath?: string | undefined) => void
   navigateToSlug: (slug: string) => void
   navigateToDocuments: () => void
-  selectedSlug?: string
+  selectedSlug?: string | undefined
   startTransition: TransitionStartFunction
 }
 

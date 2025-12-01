@@ -203,6 +203,37 @@ Stores document content:
 - Paths are normalized and restricted to the authenticated user by `src/lib/file-storage.ts`. Override the root with `FILE_STORAGE_DIR` when needed.
 - See `docs/README.md` for the full flow, API routes, and extension/component integration details.
 
+## Python Code Execution
+
+Code blocks in the editor can execute Python, JavaScript, TypeScript, and Bash code. When `ENABLE_PYTHON_SANDBOX=true` (production mode), code runs in a hardened Docker container with:
+
+- **No network access** (`--network none`) – prevents `pip install` and external connections
+- **Read-only filesystem** – prevents file system attacks
+- **Resource limits** – CPU, memory, and process limits
+- **Non-root user** – runs as `nobody:nogroup` for security
+
+### Installing Python Packages
+
+Since the sandbox has no network access, you cannot run `pip install` at runtime. To use packages like `openai`, create a custom Docker image:
+
+1. **Build a custom image** with packages pre-installed:
+   ```bash
+   docker build -f Dockerfile.python-sandbox -t python-sandbox:custom .
+   ```
+
+2. **Update your environment** to use the custom image:
+   ```bash
+   PYTHON_DOCKER_IMAGE=python-sandbox:custom
+   ```
+
+3. **For local development**, you can disable the sandbox to allow network access:
+   ```bash
+   ENABLE_PYTHON_SANDBOX=false
+   ```
+   ⚠️ **Warning**: This runs code directly on your machine without isolation.
+
+See `docs/python-sandbox-setup.md` for detailed configuration.
+
 ## Upcoming Enhancements
 
 - **Stable sidebar tree data** – eliminate the document tree flicker in `AppSidebar` by caching `/api/markdown` responses (React context/SWR/server component) instead of refetching on every navigation.

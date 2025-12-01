@@ -5,7 +5,7 @@ import StarterKit from '@tiptap/starter-kit'
 import { Underline } from '@tiptap/extension-underline'
 import { TextAlign } from '@tiptap/extension-text-align'
 import { Placeholder, Gapcursor } from '@tiptap/extensions'
-import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
+import CodeBlockLowlight, { type CodeBlockLowlightOptions } from '@tiptap/extension-code-block-lowlight'
 import { Link } from '@tiptap/extension-link'
 import { Table } from '@tiptap/extension-table'
 import { TableRow } from '@tiptap/extension-table/row'
@@ -48,6 +48,12 @@ import { getMarkdownWithFileNodes, restoreFileNodes } from '@/components/tiptap/
 type CodeExecutionAttrs = {
   lastOutput?: string
   lastError?: string | null
+}
+
+type CustomCodeBlockOptions = CodeBlockLowlightOptions & {
+  codeExecution?: {
+    enabled?: boolean
+  }
 }
 
 function createExecutionCopyNodes(schema: Schema, attrs: CodeExecutionAttrs): PMNode[] {
@@ -119,10 +125,11 @@ function appendExecutionDataToFragment(fragment: Fragment, schema: Schema, codeB
 }
 
 const lowlight = createLowlight(common)
-const CustomCodeBlock = CodeBlockLowlight.extend({
+const CustomCodeBlock = CodeBlockLowlight.extend<CustomCodeBlockOptions>({
   addOptions() {
+    const parentOptions = (this.parent?.() ?? { lowlight }) as CustomCodeBlockOptions
     return {
-      ...this.parent?.(),
+      ...parentOptions,
       codeExecution: {
         enabled: false,
       },

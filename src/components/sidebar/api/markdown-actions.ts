@@ -22,7 +22,7 @@ type MarkdownRequestOptions = {
   method: "GET" | "POST" | "PATCH" | "DELETE"
   body?: Record<string, unknown>
   errorMessage: string
-  signal?: AbortSignal
+  signal?: AbortSignal | undefined
   retry?: RetryOptions
 }
 
@@ -83,12 +83,15 @@ async function markdownRequest<T>({
     }
 
     try {
-      const response = await fetch("/api/markdown", {
-        method,
-        headers: body ? JSON_HEADERS : undefined,
-        body: body ? JSON.stringify(body) : undefined,
-        signal,
-      })
+      const requestInit: RequestInit = { method }
+      if (body) {
+        requestInit.headers = JSON_HEADERS
+        requestInit.body = JSON.stringify(body)
+      }
+      if (signal) {
+        requestInit.signal = signal
+      }
+      const response = await fetch("/api/markdown", requestInit)
 
       if (response.ok) {
         try {
@@ -128,50 +131,54 @@ export async function fetchMarkdownIndex(signal?: AbortSignal): Promise<Markdown
     signal,
     errorMessage: "Unable to load markdown files",
   })
-  const dataset = Array.isArray(data?.documents)
-    ? data?.documents
+  const dataset: unknown[] = Array.isArray(data?.documents)
+    ? data.documents ?? []
     : Array.isArray(data?.files)
-      ? data?.files
+      ? data.files ?? []
       : []
 
-  const documents = dataset.filter(
-    (doc: Partial<MarkdownDocument>): doc is MarkdownDocument => {
-      const hasValidSortOrder =
-        typeof doc?.sortOrder === "number" || typeof doc?.sortOrder === "undefined"
-
-      return (
-        typeof doc?.id === "string" &&
-        typeof doc?.slug === "string" &&
-        typeof doc?.documentPath === "string" &&
-        typeof doc?.title === "string" &&
-        hasValidSortOrder
-      )
+  const documents = dataset.filter((doc): doc is MarkdownDocument => {
+    if (!doc || typeof doc !== "object") {
+      return false
     }
-  )
+    const candidate = doc as Partial<MarkdownDocument>
+    const hasValidSortOrder =
+      typeof candidate.sortOrder === "number" || typeof candidate.sortOrder === "undefined"
 
-  const rawFolders = Array.isArray(data?.folders) ? data.folders : []
-  const folders = rawFolders.filter(
-    (folder: Partial<MarkdownFolder>): folder is MarkdownFolder => {
-      const hasValidSortOrder =
-        typeof folder?.sortOrder === "number" || typeof folder?.sortOrder === "undefined"
+    return (
+      typeof candidate.id === "string" &&
+      typeof candidate.slug === "string" &&
+      typeof candidate.documentPath === "string" &&
+      typeof candidate.title === "string" &&
+      hasValidSortOrder
+    )
+  })
 
-      return (
-        typeof folder?.id === "string" &&
-        typeof folder?.folderPath === "string" &&
-        typeof folder?.createdAt === "string" &&
-        typeof folder?.updatedAt === "string" &&
-        hasValidSortOrder
-      )
+  const rawFolders: unknown[] = Array.isArray(data?.folders) ? data.folders ?? [] : []
+  const folders = rawFolders.filter((folder): folder is MarkdownFolder => {
+    if (!folder || typeof folder !== "object") {
+      return false
     }
-  )
+    const candidate = folder as Partial<MarkdownFolder>
+    const hasValidSortOrder =
+      typeof candidate.sortOrder === "number" || typeof candidate.sortOrder === "undefined"
+
+    return (
+      typeof candidate.id === "string" &&
+      typeof candidate.folderPath === "string" &&
+      typeof candidate.createdAt === "string" &&
+      typeof candidate.updatedAt === "string" &&
+      hasValidSortOrder
+    )
+  })
 
   return { documents, folders }
 }
 
 export async function createMarkdownDocument(
   payload: {
-    title?: string
-    folderPath?: string
+    title?: string | undefined
+    folderPath?: string | undefined
   },
   signal?: AbortSignal
 ) {
@@ -231,8 +238,8 @@ export async function updateMarkdownSortOrder(
 export async function moveMarkdownDocument(
   params: {
     id: string
-    targetFolderPath?: string
-    sortOrder?: number
+    targetFolderPath?: string | undefined
+    sortOrder?: number | undefined
   },
   signal?: AbortSignal
 ) {
@@ -251,8 +258,8 @@ export async function moveMarkdownDocument(
 
 export async function moveMarkdownFolder(
   folderPath: string,
-  targetFolderPath?: string | null,
-  sortOrder?: number,
+  targetFolderPath?: string | null | undefined,
+  sortOrder?: number | undefined,
   signal?: AbortSignal
 ) {
   const data = await markdownRequest<FolderResponse>({

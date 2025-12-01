@@ -3,9 +3,9 @@ import { useEffect, useRef } from "react"
 /**
  * Development helper to understand when callbacks are recreated and why.
  */
-export function useCallbackStability(
+export function useCallbackStability<T extends (...args: any[]) => unknown>(
   name: string,
-  _callback: (...args: unknown[]) => unknown,
+  _callback: T,
   deps: readonly unknown[]
 ): void {
   const isDev = process.env.NODE_ENV === "development"

@@ -10,9 +10,9 @@ const CODE_BLOCK_META_LANGUAGE = '__code_execution_meta__'
 type FileMeta = {
   src: string
   filename: string
-  fileSize?: number
-  fileType?: string
-  previewType?: 'image' | 'document' | 'file'
+  fileSize?: number | undefined
+  fileType?: string | undefined
+  previewType?: 'image' | 'document' | 'file' | undefined
 }
 
 type LinkMark = { type: 'link'; attrs?: { href?: string } }
@@ -117,9 +117,13 @@ function replaceFileNodesWithLinks(json: JSONContent, userSegment?: string): JSO
       return node
     })
 
+  const mappedContent = Array.isArray(json?.content) ? mapNodes(json.content) : json?.content
+  if (mappedContent === undefined) {
+    return json
+  }
   return {
     ...json,
-    content: Array.isArray(json?.content) ? mapNodes(json.content) : json?.content
+    content: mappedContent,
   }
 }
 
@@ -166,9 +170,14 @@ function insertCodeBlockExecutionMeta(json: JSONContent): JSONContent {
     return result
   }
 
+  const mappedContent = Array.isArray(json?.content) ? mapNodes(json.content) : json?.content
+  if (mappedContent === undefined) {
+    return json
+  }
+
   return {
     ...json,
-    content: Array.isArray(json?.content) ? mapNodes(json.content) : json?.content,
+    content: mappedContent,
   }
 }
 
@@ -211,7 +220,8 @@ export function restoreFileNodesFromLinks(json: JSONContent, userSegment?: strin
     })
 
   const content = Array.isArray(json?.content) ? mapNodes(json.content) : json?.content
-  return { doc: { ...json, content }, changed }
+  const doc: JSONContent = content === undefined ? json : { ...json, content }
+  return { doc, changed }
 }
 
 function restoreCodeBlockExecutionMeta(json: JSONContent) {
@@ -263,7 +273,8 @@ function restoreCodeBlockExecutionMeta(json: JSONContent) {
   }
 
   const content = Array.isArray(json?.content) ? mapNodes(json.content) : json?.content
-  return { doc: { ...json, content }, changed }
+  const doc: JSONContent = content === undefined ? json : { ...json, content }
+  return { doc, changed }
 }
 
 export function getMarkdownWithFileNodes(editor: Editor, userId?: string | null) {

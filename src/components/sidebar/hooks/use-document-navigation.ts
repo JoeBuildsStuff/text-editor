@@ -4,7 +4,7 @@ import { usePathname, useRouter } from "next/navigation"
 import { buildDocumentsPath } from "@/components/sidebar/tree/tree-utils"
 
 export type UseDocumentNavigationReturn = {
-  selectedSlug?: string
+  selectedSlug?: string | undefined
   navigateToSlug: (slug: string) => void
   navigateToDocuments: () => void
   updateSlugInPlace: (slug: string) => void

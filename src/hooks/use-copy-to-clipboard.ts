@@ -4,9 +4,9 @@ import { useState, useCallback } from 'react';
 import { toast } from 'sonner';
 
 interface UseCopyToClipboardOptions {
-  successMessage?: string;
-  errorMessage?: string;
-  feedbackDuration?: number;
+  successMessage?: string | undefined;
+  errorMessage?: string | undefined;
+  feedbackDuration?: number | undefined;
 }
 
 interface UseCopyToClipboardReturn {

@@ -33,7 +33,10 @@ const rateLimiter = new Map<string, RateLimiterEntry>()
 let preparedSandboxRoot: Promise<void> | null = null
 
 function buildSandboxEnv(): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { PYTHONUNBUFFERED: "1" }
+  const env: NodeJS.ProcessEnv = {
+    NODE_ENV: process.env.NODE_ENV ?? "development",
+    PYTHONUNBUFFERED: "1",
+  }
   for (const key of SAFE_ENV_KEYS) {
     const value = process.env[key]
     if (typeof value === "string") {
@@ -67,7 +70,7 @@ function isRateLimited(userId: string) {
 
 async function ensureSandboxRoot() {
   if (!preparedSandboxRoot) {
-    preparedSandboxRoot = mkdir(SANDBOX_ROOT, { recursive: true })
+    preparedSandboxRoot = mkdir(SANDBOX_ROOT, { recursive: true }).then(() => undefined)
   }
   await preparedSandboxRoot
 }
