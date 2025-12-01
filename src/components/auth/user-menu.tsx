@@ -10,6 +10,7 @@ import {
   Sun,
   User,
   Shield,
+  LifeBuoy,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTheme } from "next-themes";
@@ -186,6 +187,13 @@ export function UserMenu() {
           )}
           <span className="sr-only">Toggle Theme</span>
         </DropdownMenuItem>
+        <DropdownMenuItem className="font-light" asChild>
+          <Link href="/help">
+            <LifeBuoy className="size-4" strokeWidth={1.5} />
+            <span className="font-light">Help</span>
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
         <DropdownMenuItem
           onSelect={(event) => {
             event.preventDefault();
