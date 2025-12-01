@@ -22,6 +22,7 @@ services:
       - NEXT_PUBLIC_BETTER_AUTH_URL=${BETTER_AUTH_URL:-https://text-editor.joe-taylor.me}
       - ENABLE_PYTHON_SANDBOX=true
       - PYTHON_DOCKER_IMAGE=python:3.11-slim
+      - ALLOW_SANDBOX_NETWORK=true
     networks:
       - traefik_proxy
     labels:
