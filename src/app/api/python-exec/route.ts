@@ -12,7 +12,7 @@ const EXECUTION_TIMEOUT_MS =
   process.env.PYTHON_EXEC_TIMEOUT_MS ? parseInt(process.env.PYTHON_EXEC_TIMEOUT_MS, 10) : 120_000
 const RATE_LIMIT_WINDOW_MS = 60_000
 const RATE_LIMIT_MAX_REQUESTS = 60
-const SANDBOX_ROOT =
+export const SANDBOX_ROOT =
   process.env.PYTHON_SANDBOX_DIR ?? path.join(process.cwd(), "server", "python-sandbox")
 const PYTHON_DOCKER_IMAGE = process.env.PYTHON_DOCKER_IMAGE ?? "python:3.11-slim"
 const NODE_DOCKER_IMAGE = process.env.NODE_DOCKER_IMAGE ?? "node:22-slim"
@@ -34,21 +34,25 @@ type RateLimiterEntry = {
 const rateLimiter = new Map<string, RateLimiterEntry>()
 let preparedSandboxRoot: Promise<void> | null = null
 
-function buildSandboxEnv(): NodeJS.ProcessEnv {
+function buildSandboxEnv(userSandboxDir?: string): NodeJS.ProcessEnv {
+  // For local (non-Docker) development, use the user's sandbox directory for persistence
+  const pythonBase = userSandboxDir ? `${userSandboxDir}/.python` : "/tmp"
+  const homeDir = userSandboxDir ?? "/tmp"
+  
   const env: NodeJS.ProcessEnv = {
     NODE_ENV: process.env.NODE_ENV ?? "development",
     PYTHONUNBUFFERED: "1",
-    // Defaults mirror the hardened sandbox so local/non-docker runs behave the same.
-    HOME: process.env.HOME ?? "/tmp",
-    PYTHONUSERBASE: process.env.PYTHONUSERBASE ?? "/tmp",
-    PATH: process.env.PATH ?? "/tmp/bin:/tmp/.local/bin:/usr/local/bin:/usr/bin:/bin",
+    // Use sandbox directory for persistence in local development
+    HOME: homeDir,
+    PYTHONUSERBASE: pythonBase,
+    PATH: process.env.PATH ?? `${pythonBase}/bin:/tmp/bin:/tmp/.local/bin:/usr/local/bin:/usr/bin:/bin`,
     PYTHONPATH:
       process.env.PYTHONPATH ??
-      "/tmp/lib/python3.11/site-packages:/tmp/lib/python3/site-packages:/tmp/.local/lib/python3.11/site-packages:/tmp/.local/lib/python3/site-packages",
+      `${pythonBase}/lib/python3.11/site-packages:${pythonBase}/lib/python3/site-packages:/tmp/lib/python3.11/site-packages:/tmp/lib/python3/site-packages`,
   }
   for (const key of SAFE_ENV_KEYS) {
     const value = process.env[key]
-    if (typeof value === "string") {
+    if (typeof value === "string" && env[key] === undefined) {
       env[key] = value
     }
   }
@@ -123,6 +127,25 @@ function buildDockerCommand(mode: ExecutionMode, code: string, userSandboxDir: s
 
   const image = mode === "node" || mode === "typescript" ? NODE_DOCKER_IMAGE : PYTHON_DOCKER_IMAGE
 
+  // Python paths for persistent package storage in /sandbox
+  // Packages installed via pip will persist across container restarts
+  const pythonUserBase = "/sandbox/.python"
+  const pythonPath = [
+    `${pythonUserBase}/lib/python3.11/site-packages`,
+    `${pythonUserBase}/lib/python3/site-packages`,
+    // Fallback paths for compatibility
+    "/tmp/lib/python3.11/site-packages",
+    "/tmp/lib/python3/site-packages",
+  ].join(":")
+  const pathEnv = [
+    `${pythonUserBase}/bin`,
+    "/tmp/bin",
+    "/tmp/.local/bin",
+    "/usr/local/bin",
+    "/usr/bin",
+    "/bin",
+  ].join(":")
+
   return {
     command: "docker",
     args: [
@@ -156,14 +179,18 @@ function buildDockerCommand(mode: ExecutionMode, code: string, userSandboxDir: s
       "/dev/urandom:/dev/urandom",
       "-e",
       "PYTHONUNBUFFERED=1",
+      // Use /sandbox for HOME so pip cache and config persist
       "-e",
-      "HOME=/tmp",
+      "HOME=/sandbox",
+      // PYTHONUSERBASE controls where pip installs packages with --user
+      // Using /sandbox/.python keeps packages separate from user files
       "-e",
-      "PYTHONUSERBASE=/tmp",
+      `PYTHONUSERBASE=${pythonUserBase}`,
       "-e",
-      "PATH=/tmp/bin:/tmp/.local/bin:/usr/local/bin:/usr/bin:/bin",
+      `PATH=${pathEnv}`,
       "-e",
-      "PYTHONPATH=/tmp/lib/python3.11/site-packages:/tmp/lib/python3/site-packages:/tmp/.local/lib/python3.11/site-packages:/tmp/.local/lib/python3/site-packages",
+      `PYTHONPATH=${pythonPath}`,
+      // Mount user's persistent sandbox volume
       "-v",
       `${userSandboxDir}:/sandbox:rw`,
       "-w",
@@ -172,6 +199,11 @@ function buildDockerCommand(mode: ExecutionMode, code: string, userSandboxDir: s
       ...runtimeArgs,
     ],
   }
+}
+
+// Export helper for other modules
+export function resolveUserSandboxDirExported(userId: string) {
+  return resolveUserSandboxDir(userId)
 }
 
 function buildLocalCommand(mode: ExecutionMode, code: string) {
@@ -250,7 +282,7 @@ export async function POST(request: Request) {
   }
 
   const userSandboxDir = await ensureUserSandbox(session.user.id)
-  const sandboxEnv = buildSandboxEnv()
+  const sandboxEnv = buildSandboxEnv(userSandboxDir)
   let sandboxCommand: { command: string; args: string[] }
   try {
     sandboxCommand = buildSandboxCommand(mode, code, userSandboxDir)

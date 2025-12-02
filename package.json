@@ -10,7 +10,9 @@
     "db:setup": "tsx scripts/setup-databases.ts",
     "auth:migrate": "pnpm exec cli migrate --yes",
     "auth:secret": "pnpm exec cli secret",
-    "db:init": "pnpm db:setup && pnpm auth:migrate"
+    "db:init": "pnpm db:setup && pnpm auth:migrate",
+    "sandbox:cleanup": "node scripts/cleanup-sandboxes.mjs",
+    "sandbox:cleanup:dry": "node scripts/cleanup-sandboxes.mjs --dry-run --verbose"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
