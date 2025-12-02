@@ -8,7 +8,8 @@ import { requireAdminSession } from "@/lib/auth/session"
 import { isExecutionMode } from "@/lib/execution-modes"
 import type { ExecutionMode } from "@/lib/execution-modes"
 
-const EXECUTION_TIMEOUT_MS = 10_000
+const EXECUTION_TIMEOUT_MS =
+  process.env.PYTHON_EXEC_TIMEOUT_MS ? parseInt(process.env.PYTHON_EXEC_TIMEOUT_MS, 10) : 120_000
 const RATE_LIMIT_WINDOW_MS = 60_000
 const RATE_LIMIT_MAX_REQUESTS = 60
 const SANDBOX_ROOT =
