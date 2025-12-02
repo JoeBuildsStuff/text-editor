@@ -17,7 +17,7 @@ const SANDBOX_ROOT =
 const PYTHON_DOCKER_IMAGE = process.env.PYTHON_DOCKER_IMAGE ?? "python:3.11-slim"
 const NODE_DOCKER_IMAGE = process.env.NODE_DOCKER_IMAGE ?? "node:22-slim"
 
-const SAFE_ENV_KEYS = ["PATH", "PYTHONPATH", "HOME", "LANG"] as const
+const SAFE_ENV_KEYS = ["PATH", "PYTHONPATH", "HOME", "LANG", "PYTHONUSERBASE"] as const
 const SANDBOX_USER_SEGMENT = /[^a-zA-Z0-9_-]/g
 const textEncoder = new TextEncoder()
 
@@ -38,6 +38,13 @@ function buildSandboxEnv(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
     NODE_ENV: process.env.NODE_ENV ?? "development",
     PYTHONUNBUFFERED: "1",
+    // Defaults mirror the hardened sandbox so local/non-docker runs behave the same.
+    HOME: process.env.HOME ?? "/tmp",
+    PYTHONUSERBASE: process.env.PYTHONUSERBASE ?? "/tmp",
+    PATH: process.env.PATH ?? "/tmp/bin:/tmp/.local/bin:/usr/local/bin:/usr/bin:/bin",
+    PYTHONPATH:
+      process.env.PYTHONPATH ??
+      "/tmp/lib/python3.11/site-packages:/tmp/lib/python3/site-packages:/tmp/.local/lib/python3.11/site-packages:/tmp/.local/lib/python3/site-packages",
   }
   for (const key of SAFE_ENV_KEYS) {
     const value = process.env[key]
@@ -170,7 +177,8 @@ function buildDockerCommand(mode: ExecutionMode, code: string, userSandboxDir: s
 function buildLocalCommand(mode: ExecutionMode, code: string) {
   switch (mode) {
     case "python":
-      return { command: "python3", args: ["-I", "-c", code] }
+      // No -I so user installs in /tmp are discoverable via PYTHONPATH.
+      return { command: "python3", args: ["-c", code] }
     case "bash":
       return { command: "bash", args: ["-lc", code] }
     case "node":
