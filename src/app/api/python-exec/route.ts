@@ -152,6 +152,8 @@ function buildDockerCommand(mode: ExecutionMode, code: string, userSandboxDir: s
       "-e",
       "HOME=/tmp",
       "-e",
+      "PATH=/tmp/.local/bin:/usr/local/bin:/usr/bin:/bin",
+      "-e",
       "PYTHONPATH=/tmp/.local/lib/python3.11/site-packages:/tmp/.local/lib/python3/site-packages",
       "-v",
       `${userSandboxDir}:/sandbox:rw`,
