@@ -104,7 +104,7 @@ function buildDockerCommand(mode: ExecutionMode, code: string, userSandboxDir: s
   const runtimeArgs = (() => {
     switch (mode) {
       case "python":
-        return ["python3", "-I", "-c", code]
+        return ["python3", "-c", code]
       case "bash":
         return ["bash", "-lc", code]
       case "node":
@@ -132,9 +132,9 @@ function buildDockerCommand(mode: ExecutionMode, code: string, userSandboxDir: s
       "--security-opt",
       "no-new-privileges",
       "--memory",
-      "128m",
+      "256m",
       "--memory-swap",
-      "128m",
+      "256m",
       "--cpus",
       "0.5",
       "--pids-limit",
@@ -151,6 +151,8 @@ function buildDockerCommand(mode: ExecutionMode, code: string, userSandboxDir: s
       "PYTHONUNBUFFERED=1",
       "-e",
       "HOME=/tmp",
+      "-e",
+      "PYTHONUSERBASE=/tmp",
       "-e",
       "PATH=/tmp/.local/bin:/usr/local/bin:/usr/bin:/bin",
       "-e",
