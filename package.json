@@ -12,7 +12,9 @@
     "auth:secret": "pnpm exec cli secret",
     "db:init": "pnpm db:setup && pnpm auth:migrate",
     "sandbox:cleanup": "node scripts/cleanup-sandboxes.mjs",
-    "sandbox:cleanup:dry": "node scripts/cleanup-sandboxes.mjs --dry-run --verbose"
+    "sandbox:cleanup:dry": "node scripts/cleanup-sandboxes.mjs --dry-run --verbose",
+    "sandbox:test": "tsx scripts/test-sandbox-agents-sdk.ts",
+    "sandbox:test:network": "ALLOW_SANDBOX_NETWORK=true tsx scripts/test-sandbox-agents-sdk.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
