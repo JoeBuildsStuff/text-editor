@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { spawn } from "node:child_process"
 import { existsSync } from "node:fs"
-import { mkdir } from "node:fs/promises"
+import { mkdir, chmod } from "node:fs/promises"
 import path from "node:path"
 
 import { requireAdminSession } from "@/lib/auth/session"
@@ -33,6 +33,17 @@ type RateLimiterEntry = {
 
 const rateLimiter = new Map<string, RateLimiterEntry>()
 let preparedSandboxRoot: Promise<void> | null = null
+
+async function ensureWorldWritableDir(targetPath: string) {
+  try {
+    await chmod(targetPath, 0o777)
+  } catch (error) {
+    // Ignore permission errors so existing directories remain usable.
+    if ((error as NodeJS.ErrnoException)?.code !== "EPERM") {
+      throw error
+    }
+  }
+}
 
 function buildSandboxEnv(userSandboxDir?: string): NodeJS.ProcessEnv {
   // For local (non-Docker) development, use the user's sandbox directory for persistence
@@ -83,7 +94,8 @@ function isRateLimited(userId: string) {
 
 async function ensureSandboxRoot() {
   if (!preparedSandboxRoot) {
-    preparedSandboxRoot = mkdir(SANDBOX_ROOT, { recursive: true }).then(() => undefined)
+    preparedSandboxRoot = mkdir(SANDBOX_ROOT, { recursive: true, mode: 0o777 })
+      .then(() => ensureWorldWritableDir(SANDBOX_ROOT))
   }
   await preparedSandboxRoot
 }
@@ -96,7 +108,8 @@ function resolveUserSandboxDir(userId: string) {
 async function ensureUserSandbox(userId: string) {
   await ensureSandboxRoot()
   const userDir = resolveUserSandboxDir(userId)
-  await mkdir(userDir, { recursive: true })
+  await mkdir(userDir, { recursive: true, mode: 0o777 })
+  await ensureWorldWritableDir(userDir)
   return userDir
 }
 
