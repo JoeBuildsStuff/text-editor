@@ -21,9 +21,6 @@ services:
       - BETTER_AUTH_URL=${BETTER_AUTH_URL:-https://text-editor.joe-taylor.me}
       - NEXT_PUBLIC_BETTER_AUTH_URL=${BETTER_AUTH_URL:-https://text-editor.joe-taylor.me}
       - ENABLE_PYTHON_SANDBOX=true
-      # Host path so the inner Docker sandbox bind-mount hits the real host filesystem.
-      # Without this, the daemon sees /app/server/... (container path) and creates a new root-owned dir.
-      - PYTHON_SANDBOX_DIR=/home/joe/data/text-editor/python-sandbox
       - PYTHON_DOCKER_IMAGE=python:3.11-slim
       - ALLOW_SANDBOX_NETWORK=true
     networks:
