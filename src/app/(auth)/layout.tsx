@@ -5,9 +5,6 @@ export default function AuthLayout({
 }: {
   children: ReactNode;
 }) {
-  return (
-    <div className="bg-muted/40 flex min-h-screen items-center justify-center px-4 py-12">
-      <div className="w-full max-w-md">{children}</div>
-    </div>
-  );
+  // Layout is now handled by individual pages for better control
+  return <>{children}</>;
 }

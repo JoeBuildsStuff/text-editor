@@ -74,6 +74,15 @@ BETTER_AUTH_SECRET=<generate-secure-secret>
 PORT=3000
 NEXT_TELEMETRY_DISABLED=1
 
+# Google OAuth (Optional - Required for Google sign-in)
+# Get these from Google Cloud Console:
+# 1. Go to https://console.cloud.google.com/
+# 2. Create/select a project and enable Google+ API
+# 3. Create OAuth 2.0 credentials (Web application)
+# 4. Add authorized redirect URI: https://your-domain.com/api/auth/callback/google
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+
 # File Storage (optional)
 FILE_STORAGE_DIR=/app/server/uploads
 
@@ -89,6 +98,55 @@ SKIP_TYPE_CHECK=false  # Set to 'true' for memory-constrained builds
 ```bash
 openssl rand -hex 32
 ```
+
+### Setting Up Google OAuth on VPS
+
+To enable Google sign-in on your production server:
+
+1. **Get Google OAuth Credentials**:
+   - Go to [Google Cloud Console](https://console.cloud.google.com/)
+   - Create a new project or select an existing one
+   - Enable the Google+ API
+   - Go to "Credentials" → "Create Credentials" → "OAuth client ID"
+   - Choose "Web application"
+   - Add authorized redirect URIs:
+     - `https://your-domain.com/api/auth/callback/google` (for production)
+     - `http://localhost:3000/api/auth/callback/google` (for local testing, optional)
+
+2. **Add Credentials to VPS**:
+   
+   SSH into your VPS and navigate to the app directory:
+   ```bash
+   ssh user@your-vps-ip
+   cd /home/joe/apps/text-editor  # or your APP_DIR
+   ```
+
+   Edit or create the `.env` file:
+   ```bash
+   nano .env
+   # or
+   vim .env
+   ```
+
+   Add the Google OAuth variables:
+   ```env
+   GOOGLE_CLIENT_ID=your-google-client-id-here
+   GOOGLE_CLIENT_SECRET=your-google-client-secret-here
+   ```
+
+   Save the file (in nano: `Ctrl+X`, then `Y`, then `Enter`)
+
+3. **Restart the Docker Container**:
+   ```bash
+   docker compose up -d --force-recreate text-editor
+   ```
+
+   Or if you want to verify the environment variables are loaded:
+   ```bash
+   docker compose config | grep GOOGLE
+   ```
+
+**Note**: Docker Compose automatically reads `.env` files in the same directory as `docker-compose.yml`. The variables will be available to the container on the next restart.
 
 ### Security Considerations
 
