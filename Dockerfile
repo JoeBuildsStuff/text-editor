@@ -22,8 +22,13 @@ WORKDIR /app
 # Copy package files
 COPY package.json pnpm-lock.yaml ./
 
+# Configure pnpm store directory
+RUN pnpm config set store-dir /root/.local/share/pnpm/store
+
 # Install dependencies (including better-sqlite3 which will compile)
-RUN pnpm install --frozen-lockfile
+# Use cache mount for pnpm store to speed up subsequent builds
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile --prefer-offline
 
 # Copy source code and config files
 COPY . .
@@ -69,30 +74,30 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 
-# Copy necessary files from builder
-COPY --from=builder /app/package.json /app/pnpm-lock.yaml ./
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/next.config.ts ./
-COPY --from=builder /app/tsconfig.json ./
-COPY --from=builder /app/postcss.config.mjs ./
-COPY --from=builder /app/src ./src
+# Copy necessary files from builder with correct ownership
+COPY --chown=node:node --from=builder /app/package.json /app/pnpm-lock.yaml ./
+COPY --chown=node:node --from=builder /app/.next ./.next
+COPY --chown=node:node --from=builder /app/public ./public
+COPY --chown=node:node --from=builder /app/next.config.ts ./
+COPY --chown=node:node --from=builder /app/tsconfig.json ./
+COPY --chown=node:node --from=builder /app/postcss.config.mjs ./
+COPY --chown=node:node --from=builder /app/src ./src
 
 # Copy server directory structure (empty, will be mounted as volume)
 # This ensures the directory exists with correct permissions
 RUN mkdir -p /app/server/documents
 
-# Install production dependencies
-RUN pnpm install --prod --frozen-lockfile
+# Configure pnpm store directory
+RUN pnpm config set store-dir /root/.local/share/pnpm/store
+
+# Install production dependencies with cache mount
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
+    pnpm install --prod --frozen-lockfile --prefer-offline
 
 # Copy TypeScript from builder (needed for next.config.ts at runtime)
 # This avoids pnpm store version conflicts
-COPY --from=builder /app/node_modules/typescript ./node_modules/typescript
-COPY --from=builder /app/node_modules/.bin/tsc ./node_modules/.bin/tsc
-RUN chmod +x ./node_modules/.bin/tsc 2>/dev/null || true
-
-# Set ownership for node user
-RUN chown -R node:node /app
+COPY --chown=node:node --from=builder /app/node_modules/typescript ./node_modules/typescript
+COPY --chown=node:node --from=builder /app/node_modules/.bin/tsc ./node_modules/.bin/tsc
 
 # Copy entrypoint that adds node to the docker socket group before dropping privileges
 COPY docker-entrypoint.sh /docker-entrypoint.sh
