@@ -17,7 +17,7 @@ return (
             </div>
             <div className="grid flex-1 text-left text-sm leading-tight">
               <span className="truncate font-semibold">Text Editor</span>
-              <span className="truncate text-xs">By Joe Builds Stuff</span>
+              <span className="truncate text-xs">By Joe Builds Stuff!</span>
             </div>
           </SidebarMenuButton>
     </SidebarMenuItem>

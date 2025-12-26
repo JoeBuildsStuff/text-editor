@@ -56,6 +56,10 @@ Optional environment variables:
 ```env
 # Custom auth database path (default: server/auth.sqlite)
 AUTH_SQLITE_PATH=/path/to/auth.sqlite
+
+# Google OAuth (optional, but required for Google sign-in)
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
 ```
 
 **Generate Secret**:
@@ -74,6 +78,12 @@ export const auth = betterAuth({
   database: getDatabase(), // SQLite database
   emailAndPassword: {
     enabled: true,
+  },
+  socialProviders: {
+    google: {
+      clientId: process.env.GOOGLE_CLIENT_ID as string,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
+    },
   },
   baseURL: process.env.BETTER_AUTH_URL || "http://localhost:3000",
   secret: process.env.BETTER_AUTH_SECRET || "",
@@ -109,20 +119,42 @@ Better Auth creates tables for:
 
 ### Email/Password
 
-Currently, only email/password authentication is enabled:
+Email/password authentication is enabled:
 
 - **Sign Up**: Users register with email and password
 - **Sign In**: Users authenticate with email and password
 - **Password Hashing**: Handled automatically by Better Auth
 - **Session Creation**: Automatic on successful authentication
 
-### Future Options
+### Google OAuth
+
+Google OAuth authentication is available for both sign-up and sign-in:
+
+- **Sign Up**: Users can create an account using their Google account
+- **Sign In**: Users can authenticate using their Google account
+- **Automatic Account Creation**: First-time Google sign-in automatically creates an account
+- **Session Creation**: Automatic on successful authentication
+
+#### Setting Up Google OAuth
+
+To enable Google sign-in, you need to create OAuth credentials in Google Cloud Console:
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project or select an existing one
+3. Enable the Google+ API
+4. Go to "Credentials" → "Create Credentials" → "OAuth client ID"
+5. Choose "Web application"
+6. Add authorized redirect URIs:
+   - `http://localhost:3000/api/auth/callback/google` (for development)
+   - `https://yourdomain.com/api/auth/callback/google` (for production)
+7. Copy the Client ID and Client Secret to your environment variables
+
+### Additional Options
 
 Better Auth supports additional methods that can be enabled:
-- OAuth providers (Google, GitHub, etc.)
+- Other OAuth providers (GitHub, Apple, etc.)
 - Magic links
 - Two-factor authentication
-- Social login
 
 ## API Routes
 
@@ -157,6 +189,11 @@ await authClient.signUp.email({
 await authClient.signIn.email({
   email: "user@example.com",
   password: "password",
+});
+
+// Sign in with Google
+await authClient.signIn.social({
+  provider: "google",
 });
 
 // Sign out
