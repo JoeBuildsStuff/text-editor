@@ -133,6 +133,7 @@ export function DocumentTitleEditor({ id, title: initialTitle, slug }: DocumentT
           onKeyDown={handleKeyDown}
           disabled={isBusy}
           aria-label="Document title"
+          autoFocus
         />
         <Button
           variant="outline"

@@ -55,6 +55,8 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
     startTransition: startActionTransition,
   })
 
+  const renameDialog = useRenameDialog()
+
   const folderActions = useFolderActions({
     updateIndex: data.updateIndex,
     invalidateData: data.invalidate,
@@ -62,6 +64,7 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
     closeFolderPath: folderState.closeFolderPath,
     navigateToSlug: navigation.navigateToSlug,
     navigateToDocuments: navigation.navigateToDocuments,
+    openRenameDialogForFolder: renameDialog.openForFolder,
     selectedSlug: navigation.selectedSlug,
     startTransition: startActionTransition,
   })
@@ -96,8 +99,6 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
     folderActions.move,
     startActionTransition,
   ])
-
-  const renameDialog = useRenameDialog()
 
   const [submitRenameAction] = useAbortableAction(async (signal: AbortSignal) => {
     const state = renameDialog.state
