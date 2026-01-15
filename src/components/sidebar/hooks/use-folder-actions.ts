@@ -33,6 +33,7 @@ export type FolderActionDeps = {
   closeFolderPath: (folderPath: string) => void
   navigateToSlug: (slug: string) => void
   navigateToDocuments: () => void
+  openRenameDialogForFolder: (folderPath: string, currentName: string) => void
   selectedSlug?: string | undefined
   startTransition: TransitionStartFunction
 }
@@ -64,6 +65,9 @@ export function useFolderActions(deps: FolderActionDeps): FolderActions {
       deps.openFolderPath(folder.folderPath)
       const folderName = getLastPathSegment(folder.folderPath) ?? "folder"
       toast.success(`Created folder "${folderName}"`)
+
+      // Automatically open rename dialog for the new folder
+      deps.openRenameDialogForFolder(folder.folderPath, folderName)
     },
     [abortController, deps]
   )
