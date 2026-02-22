@@ -75,6 +75,45 @@ created_at: "2024-01-01T00:00:00.000Z"
 updated_at: "2024-01-01T00:00:00.000Z"
 ```
 
+#### `comment_threads`
+
+Stores thread metadata and anchor information for inline comments.
+
+| Column | Type | Constraints | Description |
+|--------|------|------------|-------------|
+| `id` | TEXT | PRIMARY KEY | UUID of the thread |
+| `document_id` | TEXT | NOT NULL, FK -> `documents(id)` ON DELETE CASCADE | Parent document ID |
+| `created_by` | TEXT | NOT NULL | User ID that created the thread |
+| `status` | TEXT | NOT NULL, CHECK (`unresolved`/`resolved`) | Thread status |
+| `anchor_from` | INTEGER | NOT NULL | Selection start position in ProseMirror doc |
+| `anchor_to` | INTEGER | NOT NULL | Selection end position in ProseMirror doc |
+| `anchor_exact` | TEXT | NOT NULL, DEFAULT `''` | Selected text snapshot |
+| `anchor_prefix` | TEXT | NOT NULL, DEFAULT `''` | Context before selection |
+| `anchor_suffix` | TEXT | NOT NULL, DEFAULT `''` | Context after selection |
+| `resolved_at` | TEXT | NULL | ISO 8601 timestamp when resolved |
+| `created_at` | TEXT | NOT NULL | ISO 8601 timestamp of creation |
+| `updated_at` | TEXT | NOT NULL | ISO 8601 timestamp of last update |
+
+**Indexes**:
+- `idx_comment_threads_document_id` on `document_id`
+- `idx_comment_threads_status` on `(document_id, status)`
+
+#### `comments`
+
+Stores individual comments/replies belonging to a thread.
+
+| Column | Type | Constraints | Description |
+|--------|------|------------|-------------|
+| `id` | TEXT | PRIMARY KEY | UUID of the comment |
+| `thread_id` | TEXT | NOT NULL, FK -> `comment_threads(id)` ON DELETE CASCADE | Parent thread ID |
+| `user_id` | TEXT | NOT NULL | User ID that wrote the comment |
+| `content` | TEXT | NOT NULL | Comment body text |
+| `created_at` | TEXT | NOT NULL | ISO 8601 timestamp of creation |
+| `updated_at` | TEXT | NOT NULL | ISO 8601 timestamp of last update |
+
+**Indexes**:
+- `idx_comments_thread_id` on `thread_id`
+
 ### Database Configuration
 
 The schema includes SQLite pragmas for optimal performance:
@@ -89,6 +128,8 @@ PRAGMA foreign_keys = ON;    -- Enable foreign key constraints
 - **Documents → Users**: Many-to-one (via `user_id`)
 - **Folders → Users**: Many-to-one (via `user_id`)
 - **Documents ↔ Folders**: Logical relationship via `document_path` and `folder_path` (not enforced by foreign keys)
+- **Comment Threads → Documents**: Many-to-one (`comment_threads.document_id` -> `documents.id`)
+- **Comments → Comment Threads**: Many-to-one (`comments.thread_id` -> `comment_threads.id`)
 
 ### Path Structure
 
@@ -251,6 +292,8 @@ Indexes are created on frequently queried columns:
 - `user_id` - Used in almost every query
 - `(user_id, document_path)` - Used for path lookups
 - `(user_id, folder_path)` - Used for folder lookups
+- `document_id` on comment threads - Used for document comment fetches
+- `thread_id` on comments - Used for thread reply fetches
 
 ### WAL Mode
 
@@ -399,4 +442,3 @@ If database is corrupted:
 - [Development Guide](./development-guide.md) - Setup instructions
 - [Architecture Overview](./architecture.md) - System design
 - [Authentication](./authentication.md) - Auth database schema
-

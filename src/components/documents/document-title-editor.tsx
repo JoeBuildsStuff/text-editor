@@ -24,7 +24,11 @@ type DocumentTitleEditorProps = {
   slug: string
 }
 
-export function DocumentTitleEditor({ id, title: initialTitle, slug }: DocumentTitleEditorProps) {
+export function DocumentTitleEditor({
+  id,
+  title: initialTitle,
+  slug,
+}: DocumentTitleEditorProps) {
   const router = useRouter()
   const [title, setTitle] = useState(initialTitle)
   const [currentSlug, setCurrentSlug] = useState(slug)

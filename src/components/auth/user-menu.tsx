@@ -17,7 +17,7 @@ import { useTheme } from "next-themes";
 
 import { authClient } from "@/lib/auth-client";
 import type { AuthSession } from "@/lib/auth/types";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -123,6 +123,7 @@ export function UserMenu() {
           className="h-9 gap-2 px-2"
         >
           <Avatar className="size-8">
+            {user.image ? <AvatarImage src={user.image} alt={displayName} /> : null}
             <AvatarFallback>{initials}</AvatarFallback>
           </Avatar>
           <div className="hidden flex-1 text-left text-sm leading-tight sm:grid">
@@ -143,6 +144,7 @@ export function UserMenu() {
         <DropdownMenuLabel className="p-0 font-normal">
           <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
             <Avatar className="size-8">
+              {user.image ? <AvatarImage src={user.image} alt={displayName} /> : null}
               <AvatarFallback>{initials}</AvatarFallback>
             </Avatar>
             <div className="grid flex-1 text-left text-sm leading-tight">

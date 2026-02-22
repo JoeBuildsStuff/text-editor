@@ -1,7 +1,6 @@
 import { notFound, redirect } from "next/navigation"
 
-import { DocumentTitleEditor } from "@/components/documents/document-title-editor"
-import { DocumentEditor } from "@/components/documents/document-editor"
+import { DocumentDetailClient } from "@/components/documents/document-detail-client"
 import { getMarkdownFileById } from "@/lib/markdown-files"
 import { getServerSession } from "@/lib/auth/session"
 
@@ -25,8 +24,12 @@ export default async function DocumentDetailPage({ params }: DocumentPageProps) 
 
   return (
     <div className="mx-auto flex h-full w-full max-w-4xl flex-col gap-2">
-      <DocumentTitleEditor id={file.id} title={file.title} slug={file.slug} />
-      <DocumentEditor documentId={file.id} initialContent={file.content ?? ""} />
+      <DocumentDetailClient
+        id={file.id}
+        title={file.title}
+        slug={file.slug}
+        initialContent={file.content ?? ""}
+      />
     </div>
   )
 }

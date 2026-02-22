@@ -1,3 +1,17 @@
+import type { AnyExtension, Editor } from "@tiptap/core"
+
+export type CommentSelectionPayload = {
+  anchorFrom: number
+  anchorTo: number
+  anchorExact: string
+  anchorPrefix: string
+  anchorSuffix: string
+  position: {
+    top: number
+    left: number
+  }
+}
+
 // Types for configurable Tiptap component
 export interface TiptapFileUploadConfig {
   /** Upload function that returns a promise with the uploaded file path */
@@ -27,6 +41,18 @@ export interface TiptapProps {
   readonly?: boolean
   /** Additional CSS classes for the root container */
   className?: string
+  /** Additional extensions to register in the editor */
+  extensions?: AnyExtension[]
+  /** Called when the editor instance is created */
+  onEditorReady?: (editor: Editor | null) => void
+  /** Called when the user requests to comment on the current selection from the bubble menu */
+  onRequestCommentFromSelection?: (payload: CommentSelectionPayload) => void
+  /** Whether the comments panel is visible */
+  showComments?: boolean
+  /** Callback when comments panel visibility should change */
+  onShowCommentsChange?: (show: boolean) => void
+  /** Document id used for built-in comments orchestration */
+  commentsDocumentId?: string
 }
 
 export interface FileUploadResult {

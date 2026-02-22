@@ -17,6 +17,7 @@ This is a markdown-based text editor built with Next.js and Tiptap. It provides 
 - **[Authentication](./authentication.md)** - User authentication system using Better Auth
 - **[Database Schema](./database-schema.md)** - SQLite database structure, tables, and relationships
 - **[File Storage System](./file-storage.md)** - File upload, storage, and management system
+- **[Comments System](./comments-system.md)** - Inline comment threads, reply flow, and comment API
 - **[API Reference](./api-reference.md)** - Complete API endpoint documentation
 
 ### Operations

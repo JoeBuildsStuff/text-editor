@@ -14,7 +14,7 @@ import { TableHeader } from '@tiptap/extension-table/header'
 import { DragHandle } from '@tiptap/extension-drag-handle-react'
 import { FileNode } from '@/components/tiptap/file-node'
 import { createLowlight, common } from 'lowlight'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { TiptapProps } from './types'
 import { Image } from '@tiptap/extension-image'
 import { CustomImageView } from './custom-image-view'
@@ -41,6 +41,9 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { CodeBlock } from '@/components/tiptap/code-block'
 import FixedMenu from '@/components/tiptap/fixed-menu'
 import BubbleMenuComponent from '@/components/tiptap/bubble-menu'
+import { CommentComposerPopover } from '@/components/tiptap/comment-composer-popover'
+import { CommentsPanel } from '@/components/tiptap/comments-panel'
+import { useDocumentComments } from '@/components/tiptap/use-document-comments'
 import { createFileHandlerConfig } from '@/components/tiptap/file-handler'
 import { authClient } from '@/lib/auth-client'
 import { getMarkdownWithFileNodes, restoreFileNodes } from '@/components/tiptap/file-node-serialization'
@@ -197,11 +200,53 @@ const Tiptap = ({
   enableCodeExecution = false,
   readonly = false,
   className,
+  extensions = [],
+  onEditorReady,
+  onRequestCommentFromSelection,
+  showComments,
+  onShowCommentsChange,
+  commentsDocumentId,
 }: TiptapProps) => {
   // Track the currently selected node for drag handle functionality
   const [, setSelectedNode] = useState<{ type: { name: string } } | null>(null)
   const sessionState = authClient.useSession()
   const userId = sessionState.data?.user?.id
+  const commentsEnabled = Boolean(commentsDocumentId)
+  const {
+    setEditor: setCommentsEditor,
+    commentExtension,
+    queueAnchorSync,
+    currentUser,
+    currentUserId,
+    displayName,
+    initials,
+    composerRef,
+    composerSelection,
+    composerLeft,
+    composerTop,
+    composerContent,
+    setComposerContent,
+    isSubmittingComposer,
+    closeComposer,
+    handleOpenComposer,
+    handleSubmitComposer,
+    isLoadingThreads,
+    threads,
+    selectedThreadId,
+    setSelectedThreadId,
+    replyContent,
+    setReplyContent,
+    handleCreateReply,
+    handleToggleThreadResolved,
+    handleDeleteThread,
+    handleDeleteComment,
+    handleUpdateComment,
+  } = useDocumentComments(commentsDocumentId ? { documentId: commentsDocumentId } : {})
+  const tiptapExtensions = useMemo(
+    () => (commentsEnabled ? [...extensions, commentExtension] : extensions),
+    [commentExtension, commentsEnabled, extensions]
+  )
+  const commentSelectionHandler = commentsEnabled ? handleOpenComposer : onRequestCommentFromSelection
 
   const editor = useEditor({
     editable: !readonly,
@@ -257,7 +302,8 @@ const Tiptap = ({
         }),
         ...(enableFileNodes ? [
           FileNode
-        ] : [])
+        ] : []),
+        ...tiptapExtensions,
     ],
     content: content || ``,
     contentType: 'markdown',
@@ -276,6 +322,10 @@ const Tiptap = ({
       }
     },
     onUpdate: ({ editor }) => {
+      if (commentsEnabled) {
+        queueAnchorSync()
+      }
+
       if (onChange) {
         try {
           // Return markdown (with file nodes preserved) if available, otherwise fall back to HTML
@@ -325,6 +375,14 @@ const Tiptap = ({
     }
   })
 
+  useEffect(() => {
+    if (!commentsEnabled) {
+      return
+    }
+
+    setCommentsEditor(editor ?? null)
+  }, [commentsEnabled, editor, setCommentsEditor])
+
   // Convert placeholder file links (stored in markdown) back into file nodes so they render
   useEffect(() => {
     if (editor) {
@@ -354,6 +412,18 @@ const Tiptap = ({
   useEffect(() => {
     restoreFileNodes(editor, userId)
   }, [editor, userId])
+
+  useEffect(() => {
+    if (!onEditorReady) {
+      return
+    }
+
+    onEditorReady(editor ?? null)
+
+    return () => {
+      onEditorReady(null)
+    }
+  }, [editor, onEditorReady])
 
   // Skeleton
   if (!editor) {
@@ -405,19 +475,33 @@ const Tiptap = ({
 
     // Editor
     return (
+        <div className={commentsEnabled && showComments ? 'grid h-full gap-3 grid-cols-[minmax(0,1fr)_320px]' : 'h-full'}>
         <div className={cn('relative border border-border rounded-md bg-card h-full w-full flex flex-col', className)}>
             <TooltipProvider>
 
                 {/* start fixed menu */}
                 {showFixedMenu && !readonly && (
                     <div className='sticky top-0 z-10 bg-card/80 backdrop-blur-lg rounded-lg'>
-                        <FixedMenu editor={editor} />
+                        <FixedMenu
+                          editor={editor}
+                          {...(showComments !== undefined ? { showComments } : {})}
+                          {...(onShowCommentsChange ? { onShowCommentsChange } : {})}
+                        />
                     </div>
                 )}
                 {/* end fixed menu */}
 
                 {/* start bubble menu */}
-                {showBubbleMenu && !readonly && <BubbleMenuComponent editor={editor} />}
+                {showBubbleMenu && !readonly && (
+                  commentSelectionHandler ? (
+                    <BubbleMenuComponent
+                      editor={editor}
+                      onRequestCommentFromSelection={commentSelectionHandler}
+                    />
+                  ) : (
+                    <BubbleMenuComponent editor={editor} />
+                  )
+                )}
                 {/* end bubble menu */}
 
                 {/* start drag handle */}
@@ -449,6 +533,43 @@ const Tiptap = ({
                 {/* end editor */}
 
             </TooltipProvider>
+            {commentsEnabled && composerSelection ? (
+              <CommentComposerPopover
+                composerRef={composerRef}
+                left={composerLeft}
+                top={composerTop}
+                initials={initials}
+                displayName={displayName}
+                currentUser={currentUser}
+                content={composerContent}
+                onChangeContent={setComposerContent}
+                isSubmitting={isSubmittingComposer}
+                onCancel={closeComposer}
+                onSubmit={() => void handleSubmitComposer()}
+              />
+            ) : null}
+        </div>
+
+        {commentsEnabled ? (
+          <CommentsPanel
+            showComments={Boolean(showComments)}
+            isLoadingThreads={isLoadingThreads}
+            threads={threads}
+            selectedThreadId={selectedThreadId}
+            currentUserId={currentUserId}
+            currentUserInitials={initials}
+            replyContent={replyContent}
+            onReplyContentChange={setReplyContent}
+            onSelectThread={setSelectedThreadId}
+            onHoverThread={(threadId) => editor?.commands.hoverCommentThread(threadId)}
+            onCreateReply={() => void handleCreateReply()}
+            onToggleThreadResolved={(threadId, resolved) => void handleToggleThreadResolved(threadId, resolved)}
+            onDeleteThread={(threadId) => void handleDeleteThread(threadId)}
+            onDeleteComment={(threadId, commentId) => void handleDeleteComment(threadId, commentId)}
+            onUpdateComment={(threadId, commentId, content) => handleUpdateComment(threadId, commentId, content)}
+            onCloseComments={() => onShowCommentsChange?.(false)}
+          />
+        ) : null}
         </div>
     )
 }

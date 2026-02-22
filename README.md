@@ -16,6 +16,7 @@ This application provides a full-featured markdown editor where you can:
 - **Terminal interface** - Access a dedicated terminal page for interactive code execution
 - **Autosave** - Document content automatically saves as you type (1 second debounce)
 - **Delete documents and folders** directly from the editor interface with recursive folder deletion
+- **Inline comments** - Select text, add comment threads from the bubble menu, resolve/reply in the comments panel
 - **Admin features** - User management, audit logging, and administrative controls (admin users only)
 
 ## How It Works
@@ -55,6 +56,7 @@ This application provides a full-featured markdown editor where you can:
    - Automatically saves content changes after 1 second of inactivity
    - Shows save status (Saving…, Saved, or error messages)
    - Saves pending changes on component unmount
+   - Includes inline comments UI (selection composer, thread panel, resolve/reply actions)
 
 5. **Terminal** (`src/app/(app)/terminal/page.tsx`)
    - Dedicated terminal interface for interactive code execution
@@ -74,6 +76,10 @@ This application provides a full-featured markdown editor where you can:
    - `PATCH` - Multiple operations: rename document/folder, move document/folder, update content, reorder items
    - `DELETE` - Delete a document or folder
 
+8. **Comments API** (`src/app/api/documents/[id]/threads/*`)
+   - Thread and comment CRUD for selection-based inline comments
+   - Anchor synchronization endpoint for position remapping after edits
+
 ### Document Management
 
 - **Database storage**: All documents and folders are stored in SQLite with atomic operations, ensuring data consistency
@@ -84,6 +90,7 @@ This application provides a full-featured markdown editor where you can:
 - **Drag and drop**: Documents and folders can be reordered within the same parent or moved to different folders via drag-and-drop in the sidebar
 - **Sort order**: Custom sort order is maintained for documents and folders, allowing manual organization
 - **Autosave**: Document content automatically saves after 1 second of inactivity, with visual feedback for save status
+- **Comments flow**: Select text -> click `Comment` in bubble menu -> submit popover composer -> manage thread in comments panel
 
 ## Development Setup
 
@@ -262,6 +269,19 @@ Delete a document or folder.
 
 - `type` must be `"folder"`
 - `folderPath` (required) – Relative folder path (using `/` separators). The folder and all nested contents are deleted recursively.
+
+### Comments API (`/api/documents/:id/threads`)
+
+Comments are anchored to selected text in the editor and stored in SQLite (separate from markdown body content).
+
+- `GET /api/documents/:id/threads` – List threads/comments for a document
+- `POST /api/documents/:id/threads` – Create a thread with initial comment and anchor context
+- `PATCH /api/documents/:id/threads/anchors` – Sync mapped thread anchors after editor changes
+- `PATCH /api/documents/:id/threads/:threadId` – Resolve or reopen a thread
+- `DELETE /api/documents/:id/threads/:threadId` – Delete a thread
+- `POST /api/documents/:id/threads/:threadId/comments` – Add a reply
+- `PATCH /api/documents/:id/threads/:threadId/comments/:commentId` – Update a comment
+- `DELETE /api/documents/:id/threads/:threadId/comments/:commentId` – Delete a comment
 
 ## Database & File Storage
 

@@ -17,6 +17,7 @@ import {
     Italic,
     Underline,
     Code,
+    MessageSquare,
 } from 'lucide-react'
 import { Toggle } from '@/components/ui/toggle'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -27,9 +28,20 @@ import TableButton from './table-button'
 
 interface BubbleMenuProps {
     editor: Editor
+    onRequestCommentFromSelection?: (payload: {
+      anchorFrom: number
+      anchorTo: number
+      anchorExact: string
+      anchorPrefix: string
+      anchorSuffix: string
+      position: {
+        top: number
+        left: number
+      }
+    }) => void
 }
 
-const BubbleMenuComponent = ({ editor }: BubbleMenuProps) => {
+const BubbleMenuComponent = ({ editor, onRequestCommentFromSelection }: BubbleMenuProps) => {
     const editorState = useEditorState({
         editor,
         selector: (state: { editor: Editor }) => ({
@@ -56,6 +68,30 @@ const BubbleMenuComponent = ({ editor }: BubbleMenuProps) => {
         }
 
         chain.setTextAlign(alignment).run()
+    }
+
+    const handleRequestComment = () => {
+        const { from, to, empty } = editor.state.selection
+        if (empty || to <= from) {
+            return
+        }
+
+        const doc = editor.state.doc
+        const prefixStart = Math.max(1, from - 32)
+        const suffixEnd = Math.min(doc.content.size, to + 32)
+        const coords = editor.view.coordsAtPos(to)
+
+        onRequestCommentFromSelection?.({
+            anchorFrom: from,
+            anchorTo: to,
+            anchorExact: doc.textBetween(from, to, ' ', ' '),
+            anchorPrefix: doc.textBetween(prefixStart, from, ' ', ' '),
+            anchorSuffix: doc.textBetween(to, suffixEnd, ' ', ' '),
+            position: {
+                top: coords.bottom + 8,
+                left: (coords.left + coords.right) / 2,
+            },
+        })
     }
 
     return (
@@ -258,6 +294,23 @@ const BubbleMenuComponent = ({ editor }: BubbleMenuProps) => {
                 </Tooltip>
                 <LinkButton editor={editor} size='sm' className='text-xs' />
                 <TableButton editor={editor} size='sm' className='text-xs' />
+                {onRequestCommentFromSelection ? (
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <Button
+                                size='sm'
+                                variant='secondary'
+                                className='text-xs'
+                                onClick={handleRequestComment}
+                            >
+                                <MessageSquare className='' />
+                            </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                            <p>Add comment</p>
+                        </TooltipContent>
+                    </Tooltip>
+                ) : null}
             </div>
         </TiptapBubbleMenu>
     )

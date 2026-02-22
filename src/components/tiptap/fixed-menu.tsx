@@ -16,6 +16,7 @@ import {
     Italic,
     Underline,
     Code,
+    MessageSquare,
 } from 'lucide-react'
 import { Toggle } from '@/components/ui/toggle'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -27,9 +28,11 @@ import { CopyButton } from '@/components/ui/copy-button'
 
 interface FixedMenuProps {
     editor: Editor
+    showComments?: boolean
+    onShowCommentsChange?: (show: boolean) => void
 }
 
-const FixedMenu = ({ editor }: FixedMenuProps) => {
+const FixedMenu = ({ editor, showComments, onShowCommentsChange }: FixedMenuProps) => {
     const editorState = useEditorState({
         editor,
         selector: (state: { editor: Editor }) => ({
@@ -245,6 +248,23 @@ const FixedMenu = ({ editor }: FixedMenuProps) => {
                         </Tooltip>
                         <LinkButton editor={editor} size='sm' />
                         <TableButton editor={editor} size='sm' />
+                        {onShowCommentsChange ? (
+                            <Tooltip>
+                                <TooltipTrigger>
+                                        <Toggle
+                                            size='sm'
+                                            pressed={showComments ?? false}
+                                            onPressedChange={onShowCommentsChange}
+                                            aria-label={showComments ? 'Hide comments panel' : 'Show comments panel'}
+                                        >
+                                            <MessageSquare className='' />
+                                        </Toggle>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                    <p>{showComments ? 'Hide comments panel' : 'Show comments panel'}</p>
+                                </TooltipContent>
+                            </Tooltip>
+                        ) : null}
                     </div>
                 </div>
                 <div className='flex flex-row gap-1'>

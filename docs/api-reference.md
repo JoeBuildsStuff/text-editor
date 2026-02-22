@@ -290,6 +290,157 @@ Delete a document or folder.
 
 ---
 
+### Comments Management
+
+All comments endpoints are scoped to a document and require authentication.
+
+#### `GET /api/documents/:id/threads`
+
+List all comment threads and nested comments for a document.
+
+**Request**:
+```http
+GET /api/documents/:id/threads
+```
+
+**Status Codes**:
+- `200 OK` - Success
+- `401 Unauthorized` - Not authenticated
+- `404 Not Found` - Document not found for current user
+
+---
+
+#### `POST /api/documents/:id/threads`
+
+Create a new thread for a selected text range and add the first comment.
+
+**Request Body**:
+```json
+{
+  "anchorFrom": 120,
+  "anchorTo": 162,
+  "anchorExact": "selected text",
+  "anchorPrefix": "text before selection",
+  "anchorSuffix": "text after selection",
+  "content": "Initial thread comment"
+}
+```
+
+**Status Codes**:
+- `201 Created` - Thread created
+- `400 Bad Request` - Invalid selection or payload
+- `401 Unauthorized` - Not authenticated
+- `404 Not Found` - Document not found for current user
+
+---
+
+#### `PATCH /api/documents/:id/threads/anchors`
+
+Bulk sync thread anchor positions/context after editor changes.
+
+**Request Body**:
+```json
+{
+  "anchors": [
+    {
+      "id": "thread-uuid",
+      "anchorFrom": 132,
+      "anchorTo": 174,
+      "anchorExact": "updated selected text",
+      "anchorPrefix": "updated prefix",
+      "anchorSuffix": "updated suffix"
+    }
+  ]
+}
+```
+
+**Status Codes**:
+- `200 OK` - Anchors updated
+- `400 Bad Request` - Invalid payload
+- `401 Unauthorized` - Not authenticated
+- `404 Not Found` - Document not found for current user
+
+---
+
+#### `PATCH /api/documents/:id/threads/:threadId`
+
+Update thread metadata (currently resolve/reopen via `resolved`).
+
+**Request Body**:
+```json
+{
+  "resolved": true
+}
+```
+
+**Status Codes**:
+- `200 OK` - Thread updated
+- `400 Bad Request` - Invalid payload
+- `401 Unauthorized` - Not authenticated
+- `404 Not Found` - Thread or document not found
+
+---
+
+#### `DELETE /api/documents/:id/threads/:threadId`
+
+Delete a thread. Nested comments are removed via cascade delete.
+
+**Status Codes**:
+- `200 OK` - Thread deleted
+- `401 Unauthorized` - Not authenticated
+- `404 Not Found` - Thread or document not found
+
+---
+
+#### `POST /api/documents/:id/threads/:threadId/comments`
+
+Add a reply comment to a thread.
+
+**Request Body**:
+```json
+{
+  "content": "Reply content"
+}
+```
+
+**Status Codes**:
+- `201 Created` - Comment created
+- `400 Bad Request` - Invalid payload
+- `401 Unauthorized` - Not authenticated
+- `404 Not Found` - Thread or document not found
+
+---
+
+#### `PATCH /api/documents/:id/threads/:threadId/comments/:commentId`
+
+Update comment content.
+
+**Request Body**:
+```json
+{
+  "content": "Updated reply content"
+}
+```
+
+**Status Codes**:
+- `200 OK` - Comment updated
+- `400 Bad Request` - Invalid payload
+- `401 Unauthorized` - Not authenticated
+- `404 Not Found` - Comment or document not found
+
+---
+
+#### `DELETE /api/documents/:id/threads/:threadId/comments/:commentId`
+
+Delete a comment by id.
+
+**Status Codes**:
+- `200 OK` - Comment deleted
+- `401 Unauthorized` - Not authenticated
+- `404 Not Found` - Comment or document not found
+
+---
+
 ### File Management
 
 #### `POST /api/files/upload`
@@ -733,5 +884,6 @@ Currently, there is no rate limiting implemented. Consider adding rate limiting 
 ## Related Documentation
 
 - [File Storage System](./file-storage.md) - File upload architecture
+- [Comments System](./comments-system.md) - Comment UX flow and thread model
 - [Authentication](./authentication.md) - Auth system details
 - [Development Guide](./development-guide.md) - Development setup

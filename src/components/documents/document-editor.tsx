@@ -9,21 +9,22 @@ type SaveState = "idle" | "saving" | "saved" | "error"
 interface DocumentEditorProps {
   documentId: string
   initialContent: string
+  showComments?: boolean
+  onShowCommentsChange?: (show: boolean) => void
 }
 
-export function DocumentEditor({ documentId, initialContent }: DocumentEditorProps) {
+export function DocumentEditor({
+  documentId,
+  initialContent,
+  showComments = true,
+  onShowCommentsChange,
+}: DocumentEditorProps) {
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const pendingContentRef = useRef(initialContent)
   const lastSavedContentRef = useRef(initialContent)
+
   const [saveState, setSaveState] = useState<SaveState>("idle")
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-
-  useEffect(() => {
-    pendingContentRef.current = initialContent
-    lastSavedContentRef.current = initialContent
-    setSaveState("idle")
-    setErrorMessage(null)
-  }, [initialContent])
 
   const saveContent = useCallback(
     async (content: string, { silent = false }: { silent?: boolean } = {}) => {
@@ -51,9 +52,7 @@ export function DocumentEditor({ documentId, initialContent }: DocumentEditorPro
         if (!response.ok) {
           const errorPayload = await response.json().catch(() => ({}))
           throw new Error(
-            typeof errorPayload.error === "string"
-              ? errorPayload.error
-              : "Failed to save document"
+            typeof errorPayload.error === "string" ? errorPayload.error : "Failed to save document"
           )
         }
 
@@ -103,6 +102,13 @@ export function DocumentEditor({ documentId, initialContent }: DocumentEditorPro
   )
 
   useEffect(() => {
+    pendingContentRef.current = initialContent
+    lastSavedContentRef.current = initialContent
+    setSaveState("idle")
+    setErrorMessage(null)
+  }, [initialContent])
+
+  useEffect(() => {
     if (saveState !== "saved") {
       return
     }
@@ -131,13 +137,18 @@ export function DocumentEditor({ documentId, initialContent }: DocumentEditorPro
     saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved" : null
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="relative flex min-h-0 flex-col gap-1 h-full">
       <Tiptap
         content={initialContent}
         onChange={handleContentChange}
         enableCodeExecution
+        commentsDocumentId={documentId}
+        showComments={showComments}
+        {...(onShowCommentsChange ? { onShowCommentsChange } : {})}
+        className="min-h-0"
       />
-      <div className="flex h-5 items-center justify-end text-xs" aria-live="polite">
+
+      <div className="absolute bottom-1 right-3 flex h-5 items-center justify-end text-xs" aria-live="polite">
         {saveState === "error" ? (
           <span className="text-destructive">{errorMessage ?? "Unable to save document"}</span>
         ) : (
