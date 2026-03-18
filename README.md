@@ -1,11 +1,12 @@
 # Text Editor
 
-A markdown-based text editor built with Next.js and Tiptap. Create, edit, and organize markdown documents with a rich editing experience.
+A markdown-focused workspace built with Next.js and Tiptap. Create, edit, and organize documents with a rich editing experience.
 
 ## What It Does
 
 This application provides a full-featured markdown editor where you can:
 
+- **Start from a workspace dashboard** with document/folder stats, recent documents, and quick actions
 - **Create and edit markdown documents** using a rich Tiptap editor with markdown support
 - **Organize documents in folders** with a hierarchical folder structure
 - **Drag and drop** documents and folders to reorder or move them between folders
@@ -17,6 +18,8 @@ This application provides a full-featured markdown editor where you can:
 - **Autosave** - Document content automatically saves as you type (1 second debounce)
 - **Delete documents and folders** directly from the editor interface with recursive folder deletion
 - **Inline comments** - Select text, add comment threads from the bubble menu, resolve/reply in the comments panel
+- **AI chat assistant** - Floating chat with session history, document-aware context, comment-aware guidance, and shared model options across Claude, GPT-5, and Cerebras
+- **Authentication options** - Sign in with email/password or Google OAuth
 - **Admin features** - User management, audit logging, and administrative controls (admin users only)
 
 ## How It Works
@@ -26,6 +29,7 @@ This application provides a full-featured markdown editor where you can:
 - **Hybrid approach**: Metadata (IDs, titles, paths, timestamps) is stored in **SQLite database** at `server/documents.db`
 - **Content** is stored in **markdown files** in `server/documents/` directory
 - **Attachments & images** are written to `server/uploads/<userId>/...` through the `/api/files/*` routes so they can be referenced from the editor content
+- **Chat sessions/messages** are stored in SQLite (`chat_sessions`, `chat_messages`, `chat_attachments`) and scoped by authenticated user
 - Each document has a **UUID-based ID** for stable references, even when filenames change
 - Documents and folders can be organized in **nested folders** using folder paths
 - The database uses ACID transactions for metadata operations
@@ -38,12 +42,17 @@ This application provides a full-featured markdown editor where you can:
    - Supports headings, lists, code blocks, tables, links, images, and more
    - Content is stored and edited as markdown
 
-2. **Document Title Editor** (`src/components/documents/document-title-editor.tsx`)
+2. **Workspace Dashboard** (`src/app/(app)/page.tsx`)
+   - Authenticated home page at `/`
+   - Shows total document/folder counts and recent activity
+   - Quick links to the documents workspace and terminal
+
+3. **Document Title Editor** (`src/components/documents/document-title-editor.tsx`)
    - Inline title editing component
    - Automatically saves on blur or Enter key
    - Updates both the metadata and filename when title changes
 
-3. **Sidebar** (`src/components/app-sidebar.tsx`)
+4. **Sidebar** (`src/components/app-sidebar.tsx`)
    - Displays a tree view of all documents organized by folders
    - Auto-expands folders containing the currently selected document
    - **Drag and drop** - Reorder documents/folders or move them between folders
@@ -51,32 +60,32 @@ This application provides a full-featured markdown editor where you can:
    - Right-click any folder or document to open contextual actions (create, rename, delete) with toast feedback
    - Custom sort order support for manual organization
 
-4. **Document Editor** (`src/components/documents/document-editor.tsx`)
+5. **Document Editor** (`src/components/documents/document-editor.tsx`)
    - Wraps the Tiptap editor with autosave functionality
    - Automatically saves content changes after 1 second of inactivity
    - Shows save status (Saving…, Saved, or error messages)
    - Saves pending changes on component unmount
    - Includes inline comments UI (selection composer, thread panel, resolve/reply actions)
 
-5. **Terminal** (`src/app/(app)/terminal/page.tsx`)
+6. **Terminal** (`src/app/(app)/terminal/page.tsx`)
    - Dedicated terminal interface for interactive code execution
    - Supports Python, JavaScript, TypeScript, and Bash modes
    - Command history with persistent output
    - Streams execution output in real-time
 
-6. **File Upload System** (`src/components/tiptap/file-handler.tsx`, `src/components/tiptap/file-node.tsx`)
+7. **File Upload System** (`src/components/tiptap/file-handler.tsx`, `src/components/tiptap/file-node.tsx`)
    - Unified file handling for images, documents, archives, and other file types
    - Drag-and-drop or paste files directly into the editor
    - Automatic file type detection and appropriate preview rendering
    - Secure file storage with user-scoped paths
 
-7. **Markdown API** (`src/app/api/markdown/route.ts`)
+8. **Markdown API** (`src/app/api/markdown/route.ts`)
    - `GET` - List all documents (without content by default)
    - `POST` - Create a new document or folder
    - `PATCH` - Multiple operations: rename document/folder, move document/folder, update content, reorder items
    - `DELETE` - Delete a document or folder
 
-8. **Comments API** (`src/app/api/documents/[id]/threads/*`)
+9. **Comments API** (`src/app/api/documents/[id]/threads/*`)
    - Thread and comment CRUD for selection-based inline comments
    - Anchor synchronization endpoint for position remapping after edits
 
@@ -103,6 +112,9 @@ This application provides a full-featured markdown editor where you can:
 2. **Create your env file** – copy `.env.example` to `.env.local` (or `.env`) and set at least:
    - `BETTER_AUTH_SECRET`: generate one with `pnpm auth:secret` or `openssl rand -hex 32`
    - `BETTER_AUTH_URL` / `NEXT_PUBLIC_BETTER_AUTH_URL`: usually `http://localhost:3000`
+   - Optional for AI chat: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `CEREBRAS_API_KEY`
+   - Optional model override: `OPENAI_CHAT_MODEL` with one of `claude-haiku-4-5`, `claude-sonnet-4-6`, `claude-opus-4-6`, `gpt-oss-120b`, `gpt-5.4`, `gpt-5`, `gpt-5.4-mini`, or `gpt-5.4-nano`
+   - Optional for Google sign-in: `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`
 
 3. **Create the local SQLite databases** – this repo does not commit `documents.db` or `auth.sqlite`, so run:
 
@@ -116,7 +128,7 @@ This application provides a full-featured markdown editor where you can:
 
    Run those scripts individually if you only need to refresh one database.
 
-4. **Start the dev server** (next section) and sign up/in with email + password. The seeded markdown document lives under the demo folder in the sidebar.
+4. **Start the dev server** (next section) and sign up/in with email + password or Google OAuth (if configured). After signing in, `/` opens the workspace dashboard. The seeded markdown document lives under the demo folder in the sidebar.
 
 ## Getting Started
 
@@ -132,7 +144,7 @@ pnpm dev
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) with your browser. The app redirects to sign-in when unauthenticated, then lands on the workspace dashboard.
 
 ## API Reference
 
