@@ -31,7 +31,7 @@ export default async function HomePage() {
     .slice(0, 5)
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-6xl flex-col gap-6 py-4">
+    <div className="mx-auto flex h-full min-h-0 w-full max-w-6xl flex-col gap-3 overflow-hidden pb-3">
       <section className="flex flex-col gap-3">
         <h1 className="text-3xl font-bold tracking-tight">Workspace</h1>
         <p className="text-sm text-muted-foreground">
@@ -53,7 +53,7 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader className="pb-3">
             <CardDescription>Total Documents</CardDescription>
@@ -89,13 +89,13 @@ export default async function HomePage() {
         </Card>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-2">
-        <Card>
+      <section className="grid min-h-0 flex-1 gap-3 lg:grid-cols-2">
+        <Card className="flex min-h-0 flex-col">
           <CardHeader>
             <CardTitle className="text-lg">Recent Documents</CardTitle>
             <CardDescription>Jump back into what you were editing</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-2">
+          <CardContent className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-6">
             {recentDocuments.length === 0 && (
               <p className="text-sm text-muted-foreground">
                 No documents yet. Use the sidebar to create your first document.
@@ -122,12 +122,12 @@ export default async function HomePage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="flex min-h-0 flex-col">
           <CardHeader>
             <CardTitle className="text-lg">Top-Level Folders</CardTitle>
             <CardDescription>Your primary document areas</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-2">
+          <CardContent className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-6">
             {topFolders.length === 0 && (
               <p className="text-sm text-muted-foreground">
                 No folders yet. Add one from the sidebar to structure your workspace.
