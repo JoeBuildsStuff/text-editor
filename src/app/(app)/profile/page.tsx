@@ -11,8 +11,8 @@ export default async function ProfilePage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-8 py-6">
-      <div>
+    <div className="mx-auto flex h-full min-h-0 w-full max-w-4xl flex-col gap-6 pt-6">
+      <div className="shrink-0">
         <h1 className="text-3xl font-bold tracking-tight">Profile</h1>
         <p className="text-muted-foreground mt-1 text-sm">
           Manage how you appear across the app and keep your account secure

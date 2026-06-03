@@ -186,7 +186,7 @@ export function ProfileSettings({ user }: ProfileSettingsProps) {
   };
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto overscroll-contain pr-2 pb-6">
       <Card>
         <CardHeader>
           <CardTitle>Profile details</CardTitle>
