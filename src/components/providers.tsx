@@ -3,6 +3,9 @@
 import { ReactNode, useState } from 'react'
 import { ThemeProvider } from '@/components/theme-provider'
 import { Toaster } from '@/components/ui/sonner'
+import { ChatProvider } from '@/components/chat'
+import { useChatStore } from '@/lib/chat/chat-store'
+import { cn } from '@/lib/utils'
 import {
   QueryClient,
   QueryClientProvider,
@@ -10,6 +13,7 @@ import {
 
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => new QueryClient())
+  const isMaximized = useChatStore((s) => s.isMaximized)
 
   return (
     <ThemeProvider
@@ -18,7 +22,19 @@ export function Providers({ children }: { children: ReactNode }) {
       enableSystem
       disableTransitionOnChange
     >
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      <QueryClientProvider client={queryClient}>
+        <ChatProvider>
+          <div
+            className={cn(
+              "min-h-screen w-full min-w-0 flex-1 transition-all duration-300 ease-in-out",
+              // When chat is inset, constrain width so content is pushed left (no overlap)
+              isMaximized && "md:mr-96 md:max-w-[calc(100%-24rem)]"
+            )}
+          >
+            {children}
+          </div>
+        </ChatProvider>
+      </QueryClientProvider>
       <Toaster position="top-center" richColors />
     </ThemeProvider>
   )

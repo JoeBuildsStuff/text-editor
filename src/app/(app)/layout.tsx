@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 
 import { AppSidebar } from "@/components/sidebar/app-sidebar";
+import { ChatRoot } from "@/components/chat";
 import ReportIssueButton from "@/components/report-issue-button";
 import { DynamicBreadcrumbs } from "@/components/dynamic-breadcrumbs";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -27,6 +28,7 @@ export default function AppLayout({
         </header>
         <div className="mb-4 overflow-auto">{children}</div>
       </main>
+      <ChatRoot />
     </SidebarProvider>
   );
 }
