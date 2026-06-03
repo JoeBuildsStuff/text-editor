@@ -90,6 +90,7 @@ interface ChatStore {
   currentContext: PageContext | null;
   layoutMode: "floating" | "inset" | "fullpage";
   lastNonFullpageLayout: "floating" | "inset";
+  openSessionIds: string[];
 
   // Computed properties (will be updated whenever state changes)
   currentSession: ChatSession | null;
@@ -155,6 +156,8 @@ interface ChatStore {
   toggleChat: () => void;
   setShowHistory: (show: boolean) => void;
   setLayoutMode: (mode: "floating" | "inset" | "fullpage") => void;
+  openSessionTab: (sessionId: string) => void;
+  closeSessionTab: (sessionId: string) => void;
 
   // Context management
   updatePageContext: (context: PageContext) => void;
@@ -202,6 +205,11 @@ const generateSessionTitle = (messages: ChatMessage[]): string => {
   return "New Chat";
 };
 
+const appendOpenSessionTab = (openSessionIds: string[], sessionId: string) =>
+  openSessionIds.includes(sessionId)
+    ? openSessionIds
+    : [...openSessionIds, sessionId];
+
 export const useChatStore = create<ChatStore>()(
   persist(
     (set, get) => ({
@@ -218,6 +226,7 @@ export const useChatStore = create<ChatStore>()(
       messages: [],
       layoutMode: "floating",
       lastNonFullpageLayout: "floating",
+      openSessionIds: [],
       messageBranches: {},
       currentBranchRootId: null,
 
@@ -247,6 +256,7 @@ export const useChatStore = create<ChatStore>()(
             currentSession,
             messages,
             showHistory: false,
+            openSessionIds: appendOpenSessionTab(state.openSessionIds, sessionId),
           };
         });
 
@@ -265,6 +275,7 @@ export const useChatStore = create<ChatStore>()(
             currentSession,
             messages,
             showHistory: false,
+            openSessionIds: appendOpenSessionTab(state.openSessionIds, sessionId),
           };
         });
       },
@@ -287,6 +298,7 @@ export const useChatStore = create<ChatStore>()(
             currentSessionId: newCurrentId,
             currentSession,
             messages,
+            openSessionIds: state.openSessionIds.filter((id) => id !== sessionId),
           };
         });
       },
@@ -302,10 +314,19 @@ export const useChatStore = create<ChatStore>()(
             state.currentSessionId
           );
 
+          const oldSession = state.sessions.find((s) => s.id === sessionId);
+          const titleGenerated =
+            oldSession?.title === "New Chat" && title !== "New Chat";
+          const openSessionIds =
+            titleGenerated && !state.openSessionIds.includes(sessionId)
+              ? [...state.openSessionIds, sessionId]
+              : state.openSessionIds;
+
           return {
             sessions: updatedSessions,
             currentSession,
             messages,
+            openSessionIds,
           };
         });
       },
@@ -402,6 +423,10 @@ export const useChatStore = create<ChatStore>()(
             return session;
           });
 
+          const openSessionIds = currentSessionId
+            ? appendOpenSessionTab(state.openSessionIds, currentSessionId)
+            : state.openSessionIds;
+
           const { currentSession, messages } = computeCurrentSessionAndMessages(
             updatedSessions,
             currentSessionId
@@ -438,6 +463,7 @@ export const useChatStore = create<ChatStore>()(
             currentSession,
             messages,
             messageBranches,
+            openSessionIds,
           };
         });
       },
@@ -543,10 +569,19 @@ export const useChatStore = create<ChatStore>()(
             state.currentSessionId ?? session.id
           );
 
+          const oldSession = state.sessions.find((s) => s.id === session.id);
+          const titleGenerated =
+            oldSession?.title === "New Chat" && session.title !== "New Chat";
+          const openSessionIds =
+            titleGenerated && !state.openSessionIds.includes(session.id)
+              ? [...state.openSessionIds, session.id]
+              : state.openSessionIds;
+
           return {
             sessions,
             currentSession,
             messages,
+            openSessionIds,
           };
         });
       },
@@ -562,6 +597,7 @@ export const useChatStore = create<ChatStore>()(
             currentSession,
             messages,
             showHistory: false,
+            openSessionIds: appendOpenSessionTab(state.openSessionIds, sessionId),
           };
         });
       },
@@ -1085,6 +1121,19 @@ export const useChatStore = create<ChatStore>()(
         });
       },
 
+      openSessionTab: (sessionId) => {
+        set((state) => {
+          if (state.openSessionIds.includes(sessionId)) return state;
+          return { openSessionIds: [...state.openSessionIds, sessionId] };
+        });
+      },
+
+      closeSessionTab: (sessionId) => {
+        set((state) => ({
+          openSessionIds: state.openSessionIds.filter((id) => id !== sessionId),
+        }));
+      },
+
       // Context management
       updatePageContext: (context) => {
         set({ currentContext: context });
@@ -1250,6 +1299,7 @@ export const useChatStore = create<ChatStore>()(
         currentSessionId: state.currentSessionId,
         layoutMode: state.layoutMode,
         lastNonFullpageLayout: state.lastNonFullpageLayout,
+        openSessionIds: state.openSessionIds,
         messageBranches: state.messageBranches,
         currentBranchRootId: state.currentBranchRootId,
       }),
@@ -1286,6 +1336,17 @@ export const useChatStore = create<ChatStore>()(
           }
           if (!("lastNonFullpageLayout" in state)) {
             (state as unknown as ChatStore).lastNonFullpageLayout = "floating";
+          }
+          if (!("openSessionIds" in state) || !state.openSessionIds) {
+            (state as unknown as ChatStore).openSessionIds = [];
+          }
+          if (
+            state.openSessionIds.length === 0 &&
+            state.currentSessionId
+          ) {
+            (state as unknown as ChatStore).openSessionIds = [
+              state.currentSessionId,
+            ];
           }
 
           // Ensure signatures exist for each entry if an older state is loaded

@@ -28,7 +28,7 @@ export function Providers({ children }: { children: ReactNode }) {
             className={cn(
               "min-h-screen w-full min-w-0 flex-1 transition-all duration-300 ease-in-out",
               // When chat is inset, constrain width so content is pushed left (no overlap)
-              isMaximized && "md:mr-96 md:max-w-[calc(100%-24rem)]"
+              isMaximized && "md:mr-96"
             )}
           >
             {children}
