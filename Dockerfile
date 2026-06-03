@@ -107,4 +107,5 @@ RUN chmod +x /docker-entrypoint.sh
 EXPOSE 3000
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
-CMD ["pnpm", "start"]
+# Run Next directly — `pnpm start` via gosu/node hits corepack ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING
+CMD ["node", "node_modules/next/dist/bin/next", "start"]
