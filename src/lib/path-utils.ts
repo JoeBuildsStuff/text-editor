@@ -1,3 +1,18 @@
+const MARKDOWN_EXTENSION = /\.md$/i
+
+/**
+ * Sanitizes a single folder or file name segment for use in paths.
+ */
+export function sanitizePathSegment(input?: string | null): string {
+  const trimmed = input?.trim()
+  if (!trimmed) return ""
+  const withoutExtension = trimmed.replace(MARKDOWN_EXTENSION, "")
+  const safe = withoutExtension
+    .replace(/[^a-zA-Z0-9-_ ]+/g, "-")
+    .replace(/\s+/g, "-")
+  return safe.replace(/-+/g, "-").replace(/^-|-$/g, "")
+}
+
 /**
  * Extracts the last non-empty path segment from a `/` separated path.
  */

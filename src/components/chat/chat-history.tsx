@@ -5,7 +5,7 @@ import { ChevronRight, MessagesSquare, SquarePen, Trash } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
-import { useChatStore } from "@/lib/chat/chat-store";
+import { useChatStore, type ChatMessage } from "@/lib/chat/chat-store";
 import { cn } from "@/lib/utils";
 
 import { useEffect, useState } from "react";
@@ -20,14 +20,22 @@ import { Skeleton } from "../ui/skeleton";
 
 // Types for the database rows with relations (tech_stack_2026 schema)
 type ChatMessageRow =
-  ChatDatabase["tech_stack_2026"]["Tables"]["chat_messages"]["Row"] & {
-    chat_attachments: ChatDatabase["tech_stack_2026"]["Tables"]["chat_attachments"]["Row"][];
+  Omit<
+    ChatDatabase["tech_stack_2026"]["Tables"]["chat_messages"]["Row"],
+    "context" | "function_result" | "citations"
+  > & {
+    context: unknown;
+    function_result: unknown;
+    citations: unknown;
+    chat_attachments: Array<
+      Omit<ChatDatabase["tech_stack_2026"]["Tables"]["chat_attachments"]["Row"], "message_id">
+    >;
     chat_tool_calls: ChatDatabase["tech_stack_2026"]["Tables"]["chat_tool_calls"]["Row"][];
     chat_suggested_actions: ChatDatabase["tech_stack_2026"]["Tables"]["chat_suggested_actions"]["Row"][];
   };
 
 type ChatAttachmentRow =
-  ChatDatabase["tech_stack_2026"]["Tables"]["chat_attachments"]["Row"];
+  ChatMessageRow["chat_attachments"][number];
 type ChatSuggestedActionRow =
   ChatDatabase["tech_stack_2026"]["Tables"]["chat_suggested_actions"]["Row"];
 type ChatToolCallRow =
@@ -137,70 +145,72 @@ export function ChatHistory() {
                 })
               )
             : [];
+          const context =
+            m.context && typeof m.context === "object" && m.context !== null
+              ? (m.context as {
+                  filters?: Record<string, unknown>;
+                  data?: Record<string, unknown>;
+                })
+              : undefined;
+          const suggestedActions = Array.isArray(m.chat_suggested_actions)
+            ? m.chat_suggested_actions.map((a: ChatSuggestedActionRow) => ({
+                type: a.type,
+                label: a.label,
+                payload:
+                  a.payload && typeof a.payload === "object" && a.payload !== null
+                    ? (a.payload as Record<string, unknown>)
+                    : {},
+              }))
+            : undefined;
+          const functionResult =
+            m.function_result && typeof m.function_result === "object" && m.function_result !== null
+              ? (m.function_result as {
+                  success: boolean;
+                  data?: unknown;
+                  error?: string;
+                })
+              : undefined;
+          const toolCalls = Array.isArray(m.chat_tool_calls)
+            ? m.chat_tool_calls.map((t: ChatToolCallRow) => {
+                const result =
+                  t.result && typeof t.result === "object" && t.result !== null
+                    ? (t.result as {
+                        success: boolean;
+                        data?: unknown;
+                        error?: string;
+                      })
+                    : undefined;
+
+                return {
+                  id: t.id,
+                  name: t.name,
+                  arguments: t.arguments as Record<string, unknown>,
+                  ...(result ? { result } : {}),
+                  ...(t.reasoning ? { reasoning: t.reasoning } : {}),
+                };
+              })
+            : undefined;
+          const citations = Array.isArray(m.citations)
+            ? (m.citations as Array<{
+                url: string;
+                title: string;
+                cited_text: string;
+              }>)
+            : undefined;
+
           return {
             id: m.id,
             role: m.role,
             content: m.content,
             timestamp: new Date(m.created_at),
-            reasoning: m.reasoning || undefined,
             attachments,
-            context: m.context
-              ? typeof m.context === "object" && m.context !== null
-                ? (m.context as {
-                    filters?: Record<string, unknown>;
-                    data?: Record<string, unknown>;
-                  })
-                : undefined
-              : undefined,
-            suggestedActions: Array.isArray(m.chat_suggested_actions)
-              ? m.chat_suggested_actions.map((a: ChatSuggestedActionRow) => ({
-                  type: a.type,
-                  label: a.label,
-                  payload:
-                    a.payload &&
-                    typeof a.payload === "object" &&
-                    a.payload !== null
-                      ? (a.payload as Record<string, unknown>)
-                      : {},
-                }))
-              : undefined,
-            functionResult: m.function_result
-              ? typeof m.function_result === "object" &&
-                m.function_result !== null
-                ? (m.function_result as {
-                    success: boolean;
-                    data?: unknown;
-                    error?: string;
-                  })
-                : undefined
-              : undefined,
-            toolCalls: Array.isArray(m.chat_tool_calls)
-              ? m.chat_tool_calls.map((t: ChatToolCallRow) => ({
-                  id: t.id,
-                  name: t.name,
-                  arguments: t.arguments as Record<string, unknown>,
-                  result: t.result
-                    ? typeof t.result === "object" && t.result !== null
-                      ? (t.result as {
-                          success: boolean;
-                          data?: unknown;
-                          error?: string;
-                        })
-                      : undefined
-                    : undefined,
-                  reasoning: t.reasoning || undefined,
-                }))
-              : undefined,
-            citations: m.citations
-              ? Array.isArray(m.citations)
-                ? (m.citations as Array<{
-                    url: string;
-                    title: string;
-                    cited_text: string;
-                  }>)
-                : undefined
-              : undefined,
-          };
+            ...(m.reasoning ? { reasoning: m.reasoning } : {}),
+            ...(context ? { context } : {}),
+            ...(suggestedActions ? { suggestedActions } : {}),
+            ...(functionResult ? { functionResult } : {}),
+            ...(toolCalls ? { toolCalls } : {}),
+            ...(citations ? { citations } : {}),
+          } satisfies ChatMessage;
         })
       );
       setMessagesForSession(sessionId, msgs);

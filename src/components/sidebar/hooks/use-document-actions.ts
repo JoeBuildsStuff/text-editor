@@ -15,7 +15,16 @@ import { useLatestValue } from "@/hooks/use-latest-value"
 import { getParentPath } from "@/lib/path-utils"
 
 export type DocumentActions = {
-  create: (folderPath?: string | undefined) => void
+  submitCreate: (payload?: {
+    folderPath?: string | undefined
+    title?: string | undefined
+    iconColor?: string | null | undefined
+  }) => Promise<void>
+  create: (payload?: {
+    folderPath?: string | undefined
+    title?: string | undefined
+    iconColor?: string | null | undefined
+  }) => void
   delete: (documentId: string, slug?: string | undefined) => void
   move: (options: {
     documentId: string
@@ -42,14 +51,20 @@ export function useDocumentActions(deps: DocumentActionDeps): DocumentActions {
   const selectedSlugRef = useLatestValue(deps.selectedSlug)
 
   const createDocument = useCallback(
-    async (folderPath?: string) => {
-      const payload: Record<string, unknown> = { title: DEFAULT_DOCUMENT_TITLE }
-      if (folderPath) {
-        payload.folderPath = folderPath
-      }
-
+    async (createOptions?: {
+      folderPath?: string | undefined
+      title?: string | undefined
+      iconColor?: string | null | undefined
+    }) => {
       const signal = abortController.getSignal()
-      const document = await createMarkdownDocument(payload, signal)
+      const document = await createMarkdownDocument(
+        {
+          title: createOptions?.title ?? DEFAULT_DOCUMENT_TITLE,
+          folderPath: createOptions?.folderPath,
+          iconColor: createOptions?.iconColor ?? null,
+        },
+        signal
+      )
 
       if (!document?.id || !document.documentPath) {
         throw new Error("Missing document payload")
@@ -67,8 +82,8 @@ export function useDocumentActions(deps: DocumentActionDeps): DocumentActions {
       const parentPath = getParentPath(document.documentPath)
       if (parentPath) {
         deps.openFolderPath(parentPath)
-      } else if (folderPath) {
-        deps.openFolderPath(folderPath)
+      } else if (createOptions?.folderPath) {
+        deps.openFolderPath(createOptions.folderPath)
       }
 
       const slug = document.slug ?? document.id
@@ -188,9 +203,13 @@ export function useDocumentActions(deps: DocumentActionDeps): DocumentActions {
   )
 
   const triggerCreate = useCallback(
-    (folderPath?: string) => {
+    (createOptions?: {
+      folderPath?: string | undefined
+      title?: string | undefined
+      iconColor?: string | null | undefined
+    }) => {
       deps.startTransition(() => {
-        createDocument(folderPath).catch((error) => {
+        createDocument(createOptions).catch((error) => {
           if (error instanceof DOMException && error.name === "AbortError") {
             return
           }
@@ -221,6 +240,7 @@ export function useDocumentActions(deps: DocumentActionDeps): DocumentActions {
   )
 
   return {
+    submitCreate: createDocument,
     create: triggerCreate,
     delete: triggerDelete,
     move: moveDocument,

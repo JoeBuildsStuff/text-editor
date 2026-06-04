@@ -16,15 +16,6 @@ async function requireSessionUserId() {
   return session.user.id;
 }
 
-type ChatSessionRow = {
-  id: string;
-  user_id: string;
-  title: string;
-  context: string | null;
-  created_at: string;
-  updated_at: string;
-};
-
 type ChatMessageRow = {
   id: string;
   session_id: string;
@@ -280,6 +271,8 @@ export interface ToolCallInput {
 }
 
 export async function addChatToolCalls(_messageId: string, _calls: ToolCallInput[]) {
+  void _messageId;
+  void _calls;
   // SQLite schema in this app currently does not persist tool-calls.
   return { data: [] as Array<{ id: string; name: string }> };
 }
@@ -291,6 +284,8 @@ export interface SuggestedActionInput {
 }
 
 export async function addChatSuggestedActions(_messageId: string, _actions: SuggestedActionInput[]) {
+  void _messageId;
+  void _actions;
   // SQLite schema in this app currently does not persist suggested actions.
   return { data: [] as Array<{ id: string; type: string; label: string }> };
 }
@@ -361,9 +356,11 @@ export interface SetActiveVariantParams {
 }
 
 export async function setActiveVariant(_params: SetActiveVariantParams) {
+  void _params;
   return { data: { id: "sqlite-noop", active_index: 0 } };
 }
 
 export async function getBranchState(_sessionId: string) {
+  void _sessionId;
   return { data: [] as Array<{ user_message_id: string; active_index: number; signature: string | null; signatures: string[] | null }> };
 }

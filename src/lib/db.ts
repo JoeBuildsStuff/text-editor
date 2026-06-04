@@ -70,6 +70,7 @@ function initializeSchema(database: Database.Database) {
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL,
           sort_order REAL NOT NULL DEFAULT 0,
+          icon_color TEXT,
           UNIQUE(user_id, document_path)
         );
         
@@ -113,6 +114,7 @@ function initializeSchema(database: Database.Database) {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         sort_order REAL NOT NULL DEFAULT 0,
+        icon_color TEXT,
         UNIQUE(user_id, document_path)
       );
 
@@ -123,6 +125,8 @@ function initializeSchema(database: Database.Database) {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         sort_order REAL NOT NULL DEFAULT 0,
+        icon_color TEXT,
+        description TEXT,
         UNIQUE(user_id, folder_path)
       );
 
@@ -221,11 +225,12 @@ function initializeSchema(database: Database.Database) {
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL,
           sort_order REAL NOT NULL DEFAULT 0,
+          icon_color TEXT,
           UNIQUE(user_id, document_path)
         );
         
-        INSERT INTO documents_new (id, user_id, title, document_path, created_at, updated_at, sort_order)
-        SELECT id, user_id, title, document_path, created_at, updated_at, COALESCE(sort_order, 0) FROM documents;
+        INSERT INTO documents_new (id, user_id, title, document_path, created_at, updated_at, sort_order, icon_color)
+        SELECT id, user_id, title, document_path, created_at, updated_at, COALESCE(sort_order, 0), NULL FROM documents;
         
         DROP TABLE documents;
         ALTER TABLE documents_new RENAME TO documents;
@@ -237,6 +242,29 @@ function initializeSchema(database: Database.Database) {
   } catch (error) {
     // Migration failed, but schema is already correct
     console.warn("Schema migration check failed:", error)
+  }
+
+  try {
+    const documentTableInfo = database.prepare("PRAGMA table_info(documents)").all() as Array<{ name: string }>
+    const documentColumns = new Set(documentTableInfo.map((col) => col.name))
+    if (!documentColumns.has("icon_color")) {
+      database.exec("ALTER TABLE documents ADD COLUMN icon_color TEXT;")
+    }
+  } catch (error) {
+    console.warn("Document metadata migration check failed:", error)
+  }
+
+  try {
+    const folderTableInfo = database.prepare("PRAGMA table_info(folders)").all() as Array<{ name: string }>
+    const folderColumns = new Set(folderTableInfo.map((col) => col.name))
+    if (!folderColumns.has("icon_color")) {
+      database.exec("ALTER TABLE folders ADD COLUMN icon_color TEXT;")
+    }
+    if (!folderColumns.has("description")) {
+      database.exec("ALTER TABLE folders ADD COLUMN description TEXT;")
+    }
+  } catch (error) {
+    console.warn("Folder metadata migration check failed:", error)
   }
 }
 

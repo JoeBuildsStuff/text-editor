@@ -21,6 +21,8 @@ import { UserMenu } from "@/components/auth/user-menu"
 import { SidebarLogo } from "@/components/sidebar/app-sidebar-logo"
 import { SidebarTree } from "@/components/sidebar/tree/sidebar-tree"
 import { RenameDialog } from "@/components/sidebar/rename-dialog"
+import { CreateFolderDialog } from "@/components/sidebar/create-folder-dialog"
+import { CreateDocumentDialog } from "@/components/sidebar/create-document-dialog"
 import { useMarkdownExplorer } from "@/components/sidebar/hooks/use-markdown-explorer"
 import { SidebarErrorBoundary } from "@/components/sidebar/sidebar-error-boundary"
 
@@ -48,6 +50,8 @@ function SidebarContents() {
     createDocument,
     createFolder,
     renameDialogProps,
+    createDocumentDialogProps,
+    createFolderDialogProps,
   } = useMarkdownExplorer()
 
   return (
@@ -91,7 +95,7 @@ function SidebarContents() {
               <div className="flex items-center">
                 <Button
                   variant="ghost"
-                  size="icon-sm"
+                  size="icon"
                   onClick={createDocument}
                   disabled={isActionPending}
                   className="text-muted-foreground h-6 w-6 p-0.5"
@@ -102,7 +106,7 @@ function SidebarContents() {
                 </Button>
                 <Button
                   variant="ghost"
-                  size="icon-sm"
+                  size="icon"
                   onClick={createFolder}
                   disabled={isActionPending}
                   className="text-muted-foreground h-6 w-6 p-0.5"
@@ -142,6 +146,8 @@ function SidebarContents() {
       </Sidebar>
 
       <RenameDialog {...renameDialogProps} />
+      <CreateDocumentDialog {...createDocumentDialogProps} />
+      <CreateFolderDialog {...createFolderDialogProps} />
     </>
   )
 }

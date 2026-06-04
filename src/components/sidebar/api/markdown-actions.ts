@@ -179,6 +179,7 @@ export async function createMarkdownDocument(
   payload: {
     title?: string | undefined
     folderPath?: string | undefined
+    iconColor?: string | null | undefined
   },
   signal?: AbortSignal
 ) {
@@ -191,10 +192,22 @@ export async function createMarkdownDocument(
   return data?.document ?? null
 }
 
-export async function createMarkdownFolder(folderPath: string, signal?: AbortSignal) {
+export async function createMarkdownFolder(
+  payload: {
+    folderPath: string
+    iconColor?: string | null | undefined
+    description?: string | null | undefined
+  },
+  signal?: AbortSignal
+) {
   const data = await markdownRequest<FolderResponse>({
     method: "POST",
-    body: { type: "folder", folderPath },
+    body: {
+      type: "folder",
+      folderPath: payload.folderPath,
+      iconColor: payload.iconColor ?? null,
+      description: payload.description ?? null,
+    },
     errorMessage: "Failed to create folder",
     signal,
   })
@@ -276,19 +289,51 @@ export async function moveMarkdownFolder(
   return data?.folder ?? null
 }
 
-export async function renameMarkdownFolder(folderPath: string, newName: string, signal?: AbortSignal) {
+export async function renameMarkdownFolder(
+  folderPath: string,
+  payload: {
+    newName: string
+    iconColor?: string | null | undefined
+    description?: string | null | undefined
+  },
+  signal?: AbortSignal
+) {
+  const body: Record<string, unknown> = {
+    type: "folder",
+    folderPath,
+    newName: payload.newName,
+  }
+  if ("iconColor" in payload) {
+    body.iconColor = payload.iconColor
+  }
+  if ("description" in payload) {
+    body.description = payload.description
+  }
+
   await markdownRequest({
     method: "PATCH",
-    body: { type: "folder", folderPath, newName },
-    errorMessage: "Failed to rename folder",
+    body,
+    errorMessage: "Failed to update folder",
     signal,
   })
 }
 
-export async function renameMarkdownDocument(id: string, title: string, signal?: AbortSignal) {
+export async function renameMarkdownDocument(
+  id: string,
+  payload: {
+    title: string
+    iconColor?: string | null | undefined
+  },
+  signal?: AbortSignal
+) {
+  const body: Record<string, unknown> = { id, title: payload.title }
+  if ("iconColor" in payload) {
+    body.iconColor = payload.iconColor
+  }
+
   const data = await markdownRequest<DocumentResponse>({
     method: "PATCH",
-    body: { id, title },
+    body,
     errorMessage: "Failed to rename document",
     signal,
   })

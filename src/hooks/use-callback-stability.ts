@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react"
 /**
  * Development helper to understand when callbacks are recreated and why.
  */
-export function useCallbackStability<T extends (...args: any[]) => unknown>(
+export function useCallbackStability<T extends (...args: never[]) => unknown>(
   name: string,
   _callback: T,
   deps: readonly unknown[]

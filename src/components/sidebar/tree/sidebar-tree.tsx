@@ -16,7 +16,9 @@ import {
   type DropAnimationFunction,
 } from "@dnd-kit/core"
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable"
-import { ChevronRight, File as FileIcon, Folder as FolderIcon, FolderOpenIcon, Pencil, Trash } from "lucide-react"
+import { ChevronRight, File as FileIcon, Folder as FolderIcon, Pencil, Trash } from "lucide-react"
+import { FolderIconBadge } from "@/components/sidebar/folder-icon-badge"
+import { DocumentIconBadge } from "@/components/sidebar/document-icon-badge"
 import { CSS } from "@dnd-kit/utilities"
 
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarMenuSub, SidebarMenuSubItem } from "@/components/ui/sidebar"
@@ -402,11 +404,11 @@ function FolderTreeNode({
                     {...attributes}
                     {...listeners}
                   >
-                    {isOpen ? (
-                      <FolderOpenIcon className="w-3.5 h-3.5 mr-2 flex-none text-muted-foreground" />
-                    ) : (
-                      <FolderIcon className="w-3.5 h-3.5 mr-2 flex-none text-muted-foreground" />
-                    )}
+                    <FolderIconBadge
+                      iconColor={element.iconColor}
+                      isOpen={isOpen}
+                      className="mr-2 flex-none"
+                    />
                     <span className="font-normal">{element.name}</span>
                     <ChevronRight
                       className={cn(
@@ -460,7 +462,7 @@ function FolderTreeNode({
               onSelect={() => options.onRenameFolder(folderPath, element.name)}
             >
               <Pencil className="size-4" />
-              Rename Folder
+              Edit folder
             </ContextMenuItem>
             <ContextMenuItem
               variant="destructive"
@@ -571,7 +573,7 @@ function DocumentTreeNode({
       {...attributes}
       {...listeners}
     >
-      <FileIcon className="w-3.5 h-3.5 mr-2 flex-none text-muted-foreground" />
+      <DocumentIconBadge iconColor={element.iconColor} className="mr-2 flex-none" />
       <span className="font-normal">{element.name}</span>
     </SidebarMenuButton>
   )
@@ -589,7 +591,7 @@ function DocumentTreeNode({
           }}
         >
           <Pencil className="size-4" />
-          Rename Document
+          Edit document
         </ContextMenuItem>
         <ContextMenuItem
           variant="destructive"

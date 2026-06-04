@@ -24,8 +24,8 @@ export function updateToolCallResult(
     ...toolCall,
     result: {
       success,
-      data,
-      error,
+      ...(data !== undefined ? { data } : {}),
+      ...(error ? { error } : {}),
     },
   }
 }
@@ -55,7 +55,7 @@ export function formatToolCallResult(result: ToolCall['result']): string {
         if (data.includes('<pre><code>') && data.includes('</code></pre>')) {
           // Extract content from HTML markup
           const match = data.match(/<pre><code>([\s\S]*?)<\/code><\/pre>/)
-          if (match) {
+          if (match?.[1]) {
             return match[1]
           }
         }

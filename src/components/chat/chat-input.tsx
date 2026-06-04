@@ -188,6 +188,7 @@ export function ChatInput() {
     const files: File[] = [];
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
+      if (!item) continue;
       if (item.kind === "file") {
         const file = item.getAsFile();
         if (file) {

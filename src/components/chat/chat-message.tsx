@@ -132,7 +132,7 @@ const CitationPopover = ({
   return (
     <Popover>
       <PopoverTrigger>
-        <Badge className="" variant="blue">
+        <Badge className="border-transparent bg-blue-500 text-white" variant="secondary">
           {citationNumber}
         </Badge>
       </PopoverTrigger>
@@ -140,7 +140,7 @@ const CitationPopover = ({
         <div className="space-y-2">
           <a href={citation.url} target="_blank" rel="noopener noreferrer" className="inline-block">
             <Badge
-              variant="blue"
+              variant="secondary"
               className="font-medium text-sm break-words whitespace-normal"
             >
               {citation.title}
@@ -223,7 +223,12 @@ const renderTextWithCitations = (
     }
 
     // Add the citation popover
-    const citationNumber = parseInt(match[1]);
+    const citationNumber = parseInt(match[1] ?? "", 10);
+    if (Number.isNaN(citationNumber)) {
+      parts.push(match[0]);
+      lastIndex = match.index + match[0].length;
+      continue;
+    }
     const citation = citations[citationNumber - 1]; // Citations are 1-indexed
 
     if (citation) {
@@ -639,8 +644,11 @@ export function ChatMessage({ message, onActionClick }: ChatMessageProps) {
         {/* Function result indicator */}
         {message.functionResult && (
           <Badge
-            variant={message.functionResult.success ? "green" : "red"}
-            className="mt-1"
+            variant={message.functionResult.success ? "secondary" : "destructive"}
+            className={cn(
+              "mt-1",
+              message.functionResult.success && "border-transparent bg-green-600 text-white"
+            )}
           >
             {message.functionResult.success
               ? "✓ Action completed"

@@ -7,17 +7,24 @@ import {
   moveMarkdownFolder,
   type MarkdownIndexResult,
 } from "@/components/sidebar/api/markdown-actions"
-import { DEFAULT_FOLDER_BASENAME } from "@/components/sidebar/constants"
 import type {
   MarkdownDocument,
   MarkdownFolder,
 } from "@/components/sidebar/tree/tree-types"
 import { useAbortController } from "@/hooks/use-abort-controller"
 import { useLatestValue } from "@/hooks/use-latest-value"
-import { getLastPathSegment } from "@/lib/path-utils"
+import { getLastPathSegment, joinPaths, sanitizePathSegment } from "@/lib/path-utils"
+
+export type CreateFolderPayload = {
+  parentPath?: string | undefined
+  name: string
+  iconColor?: string | null | undefined
+  description?: string | null | undefined
+}
 
 export type FolderActions = {
-  create: (parentPath?: string | undefined) => void
+  requestCreate: (parentPath?: string | undefined) => void
+  submitCreate: (payload: CreateFolderPayload) => Promise<void>
   delete: (folderPath: string) => void
   move: (options: {
     folderPath: string
@@ -33,22 +40,36 @@ export type FolderActionDeps = {
   closeFolderPath: (folderPath: string) => void
   navigateToSlug: (slug: string) => void
   navigateToDocuments: () => void
-  openRenameDialogForFolder: (folderPath: string, currentName: string) => void
+  openCreateFolderDialog: (parentPath?: string | undefined) => void
   selectedSlug?: string | undefined
   startTransition: TransitionStartFunction
+}
+
+function buildFolderPath(parentPath: string | undefined, name: string): string {
+  const sanitized = sanitizePathSegment(name)
+  if (!sanitized) {
+    throw new Error("Folder name must contain alphanumeric characters")
+  }
+  return joinPaths(parentPath, sanitized)
 }
 
 export function useFolderActions(deps: FolderActionDeps): FolderActions {
   const abortController = useAbortController()
   const selectedSlugRef = useLatestValue(deps.selectedSlug)
 
-  const createFolder = useCallback(
-    async (parentPath?: string) => {
-      const baseName = DEFAULT_FOLDER_BASENAME
-      const targetPath = parentPath && parentPath.length > 0 ? `${parentPath}/${baseName}` : baseName
+  const submitCreate = useCallback(
+    async ({ parentPath, name, iconColor, description }: CreateFolderPayload) => {
+      const targetPath = buildFolderPath(parentPath, name)
 
       const signal = abortController.getSignal()
-      const folder = await createMarkdownFolder(targetPath, signal)
+      const folder = await createMarkdownFolder(
+        {
+          folderPath: targetPath,
+          iconColor,
+          description,
+        },
+        signal
+      )
       if (!folder?.folderPath) {
         throw new Error("Missing folder payload")
       }
@@ -63,11 +84,8 @@ export function useFolderActions(deps: FolderActionDeps): FolderActions {
       }
 
       deps.openFolderPath(folder.folderPath)
-      const folderName = getLastPathSegment(folder.folderPath) ?? "folder"
+      const folderName = getLastPathSegment(folder.folderPath) ?? name
       toast.success(`Created folder "${folderName}"`)
-
-      // Automatically open rename dialog for the new folder
-      deps.openRenameDialogForFolder(folder.folderPath, folderName)
     },
     [abortController, deps]
   )
@@ -230,19 +248,11 @@ export function useFolderActions(deps: FolderActionDeps): FolderActions {
     [abortController, deps]
   )
 
-  const triggerCreate = useCallback(
+  const requestCreate = useCallback(
     (parentPath?: string) => {
-      deps.startTransition(() => {
-        createFolder(parentPath).catch((error) => {
-          if (error instanceof DOMException && error.name === "AbortError") {
-            return
-          }
-          console.error(error)
-          toast.error(error instanceof Error ? error.message : "Unable to create folder")
-        })
-      })
+      deps.openCreateFolderDialog(parentPath)
     },
-    [createFolder, deps]
+    [deps]
   )
 
   const triggerDelete = useCallback(
@@ -264,7 +274,8 @@ export function useFolderActions(deps: FolderActionDeps): FolderActions {
   )
 
   return {
-    create: triggerCreate,
+    requestCreate,
+    submitCreate,
     delete: triggerDelete,
     move: moveFolder,
   }

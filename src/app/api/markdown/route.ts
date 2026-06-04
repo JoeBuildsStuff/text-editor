@@ -17,6 +17,14 @@ import {
   updateSortOrder,
   moveFolder,
 } from "@/lib/markdown-files";
+import { isItemIconColorInput } from "@/lib/icon-colors";
+
+const iconColorSchema = z
+  .string()
+  .max(32)
+  .refine((value) => isItemIconColorInput(value), "Invalid icon color")
+  .nullable()
+  .optional();
 
 async function ensureAuthenticated(request: Request): Promise<AuthSession | NextResponse> {
   const session = await getSessionFromHeaders(request.headers);
@@ -34,6 +42,8 @@ const payloadSchema = z
     content: z.string().default(""),
     overwrite: z.boolean().optional(),
     folderPath: z.string().max(256).optional(),
+    iconColor: iconColorSchema,
+    description: z.string().max(512).nullable().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.type === "document" && !(data.title ?? data.filename)) {
@@ -55,6 +65,7 @@ const payloadSchema = z
 const renameSchema = z.object({
   id: z.string().uuid(),
   title: z.string().min(1, "Title is required").max(128, "Title is too long"),
+  iconColor: iconColorSchema,
 });
 
 const moveDocumentSchema = z.object({
@@ -72,6 +83,8 @@ const renameFolderSchema = z.object({
   type: z.literal("folder"),
   folderPath: z.string().min(1, "Folder path is required"),
   newName: z.string().min(1, "Folder name is required").max(128, "Folder name is too long"),
+  iconColor: iconColorSchema,
+  description: z.string().max(512).nullable().optional(),
 });
 
 const updateContentSchema = z.object({
@@ -114,7 +127,10 @@ export async function POST(request: Request) {
 
   try {
     if (payload.type === "folder") {
-      const folder = await createFolder(payload.folderPath as string, session.user.id);
+      const folder = await createFolder(payload.folderPath as string, session.user.id, {
+        iconColor: payload.iconColor,
+        description: payload.description,
+      });
       return NextResponse.json({ folder }, { status: 201 });
     }
 
@@ -124,7 +140,8 @@ export async function POST(request: Request) {
       payload.content ?? "",
       session.user.id,
       payload.overwrite,
-      payload.folderPath
+      payload.folderPath,
+      payload.iconColor
     );
 
     return NextResponse.json(
@@ -185,7 +202,11 @@ export async function PATCH(request: Request) {
     // Check if this is a folder rename
     if ("type" in data && data.type === "folder" && "newName" in data) {
       const payload = renameFolderSchema.parse(data);
-      const folder = await renameFolder(payload.folderPath, payload.newName, session.user.id);
+      const folder = await renameFolder(payload.folderPath, session.user.id, {
+        newName: payload.newName,
+        iconColor: payload.iconColor,
+        description: payload.description,
+      });
       return NextResponse.json({ folder });
     }
 
@@ -207,7 +228,7 @@ export async function PATCH(request: Request) {
 
     // Otherwise, treat as document rename
     const payload = renameSchema.parse(data);
-    const document = await renameMarkdownFile(payload.id, payload.title, session.user.id);
+    const document = await renameMarkdownFile(payload.id, payload.title, session.user.id, payload.iconColor);
     return NextResponse.json({ document });
   } catch (error) {
     if (error instanceof z.ZodError) {

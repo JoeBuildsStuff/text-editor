@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile, rename, rm } from "node:fs/promises"
 import path from "node:path"
 import { getDatabase } from "./db"
 import { deleteStoredFile, FileStorageError } from "./file-storage"
+import { resolveItemIconColorId } from "./icon-colors"
 import { sanitizeUserSegment } from "./user-paths"
 
 export const MARKDOWN_DIR = path.join(process.cwd(), "server", "documents")
@@ -23,12 +24,47 @@ export type DocumentRecord = BaseRecord & {
   title: string
   documentPath: string
   sortOrder: number
+  iconColor?: string | undefined
 }
 
 export type FolderRecord = BaseRecord & {
   kind: "folder"
   folderPath: string
   sortOrder: number
+  iconColor?: string | undefined
+  description?: string | undefined
+}
+
+type FolderRow = {
+  id: string
+  user_id: string
+  folder_path: string
+  created_at: string
+  updated_at: string
+  sort_order: number
+  icon_color?: string | null
+  description?: string | null
+}
+
+function folderRowToRecord(row: FolderRow): FolderRecord {
+  return {
+    id: row.id,
+    kind: "folder",
+    folderPath: row.folder_path,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    sortOrder: row.sort_order ?? 0,
+    iconColor: row.icon_color ?? undefined,
+    description: row.description ?? undefined,
+  }
+}
+
+function resolveIconColorForStorage(input: string | null | undefined) {
+  const resolved = resolveItemIconColorId(input)
+  if (input && !resolved) {
+    throw new MarkdownFileOperationError("Invalid icon color", 422)
+  }
+  return resolved
 }
 
 export type MetadataRecord = DocumentRecord | FolderRecord
@@ -179,6 +215,7 @@ async function documentRecordToMeta(
     created_at: string
     updated_at: string
     sort_order?: number | null
+    icon_color?: string | null
   },
   includeContent: boolean
 ): Promise<MarkdownFileMeta> {
@@ -202,6 +239,7 @@ async function documentRecordToMeta(
     slug: row.id,
     content,
     sortOrder: row.sort_order ?? 0,
+    iconColor: row.icon_color ?? undefined,
   }
 }
 
@@ -250,6 +288,7 @@ export async function listMarkdownItems({ includeContent = true, userId }: ListO
       document_path: string
       created_at: string
       updated_at: string
+      icon_color?: string | null
     }>
 
   const documents = await Promise.all(
@@ -259,23 +298,9 @@ export async function listMarkdownItems({ includeContent = true, userId }: ListO
   // Get all folders for this user
   const folderRows = db
     .prepare("SELECT * FROM folders WHERE user_id = ? ORDER BY sort_order ASC, folder_path ASC")
-    .all(userId) as Array<{
-      id: string
-      user_id: string
-      folder_path: string
-      created_at: string
-      updated_at: string
-      sort_order: number
-    }>
+    .all(userId) as FolderRow[]
 
-  const folders: FolderRecord[] = folderRows.map((row) => ({
-    id: row.id,
-    kind: "folder",
-    folderPath: row.folder_path,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    sortOrder: row.sort_order ?? 0,
-  }))
+  const folders: FolderRecord[] = folderRows.map(folderRowToRecord)
 
   return {
     documents,
@@ -339,7 +364,8 @@ export async function createMarkdownFile(
   content: string,
   userId: string,
   overwrite?: boolean,
-  folderPath?: string
+  folderPath?: string,
+  iconColorInput?: string | null
 ) {
   const title = titleInput.trim()
   if (!title) {
@@ -352,6 +378,7 @@ export async function createMarkdownFile(
   }
 
   const db = getDatabase()
+  const iconColor = resolveIconColorForStorage(iconColorInput)
 
   // Validate folder exists if folderPath is provided
   if (folderPath) {
@@ -403,8 +430,8 @@ export async function createMarkdownFile(
       // Update existing
       const timestamp = new Date().toISOString()
       db.prepare(
-        "UPDATE documents SET title = ?, updated_at = ? WHERE document_path = ? AND user_id = ?"
-      ).run(title, timestamp, documentPath, userId)
+        "UPDATE documents SET title = ?, icon_color = ?, updated_at = ? WHERE document_path = ? AND user_id = ?"
+      ).run(title, iconColor, timestamp, documentPath, userId)
 
       // Write content to file
       await writeFileContent(documentPath, content ?? "", userId)
@@ -418,6 +445,7 @@ export async function createMarkdownFile(
           document_path: string
           created_at: string
           updated_at: string
+          icon_color?: string | null
         }
 
       return documentRecordToMeta(updated, false)
@@ -429,8 +457,8 @@ export async function createMarkdownFile(
   const timestamp = new Date().toISOString()
 
   db.prepare(
-    "INSERT INTO documents (id, user_id, title, document_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
-  ).run(id, userId, title, documentPath, timestamp, timestamp)
+    "INSERT INTO documents (id, user_id, title, document_path, created_at, updated_at, icon_color) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).run(id, userId, title, documentPath, timestamp, timestamp, iconColor)
 
   // Write content to file
   await writeFileContent(documentPath, content ?? "", userId)
@@ -444,12 +472,22 @@ export async function createMarkdownFile(
       document_path: string
       created_at: string
       updated_at: string
+      icon_color?: string | null
     }
 
   return documentRecordToMeta(created, false)
 }
 
-export async function createFolder(folderPathInput: string, userId: string) {
+export type CreateFolderMetadata = {
+  iconColor?: string | null | undefined
+  description?: string | null | undefined
+}
+
+export async function createFolder(
+  folderPathInput: string,
+  userId: string,
+  metadata: CreateFolderMetadata = {}
+) {
   const segments = sanitizeFolderSegments(folderPathInput)
   if (!segments.length) {
     throw new MarkdownFileOperationError("Folder name must contain alphanumeric characters", 422)
@@ -500,6 +538,9 @@ export async function createFolder(folderPathInput: string, userId: string) {
     throw new MarkdownFileOperationError("Unable to create a unique folder name", 500)
   }
 
+  const iconColor = resolveIconColorForStorage(metadata.iconColor)
+  const description = metadata.description?.trim() ? metadata.description.trim() : null
+
   // Create folder directory
   const folderAbsolutePath = path.join(getUserDocumentsDir(userId), folderRelativePath)
   await mkdir(folderAbsolutePath, { recursive: true })
@@ -508,31 +549,22 @@ export async function createFolder(folderPathInput: string, userId: string) {
   const timestamp = new Date().toISOString()
 
   db.prepare(
-    "INSERT INTO folders (id, user_id, folder_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
-  ).run(id, userId, folderRelativePath, timestamp, timestamp)
+    "INSERT INTO folders (id, user_id, folder_path, created_at, updated_at, icon_color, description) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).run(id, userId, folderRelativePath, timestamp, timestamp, iconColor, description)
 
   const created = db
     .prepare("SELECT * FROM folders WHERE id = ? AND user_id = ?")
-    .get(id, userId) as {
-      id: string
-      user_id: string
-      folder_path: string
-      created_at: string
-      updated_at: string
-      sort_order: number
-    }
+    .get(id, userId) as FolderRow
 
-  return {
-    id: created.id,
-    kind: "folder" as const,
-    folderPath: created.folder_path,
-    createdAt: created.created_at,
-    updatedAt: created.updated_at,
-    sortOrder: created.sort_order,
-  }
+  return folderRowToRecord(created)
 }
 
-export async function renameMarkdownFile(id: string, proposedTitle: string, userId: string) {
+export async function renameMarkdownFile(
+  id: string,
+  proposedTitle: string,
+  userId: string,
+  iconColorInput?: string | null
+) {
   const title = proposedTitle.trim()
   if (!title) {
     throw new MarkdownFileOperationError("Title must contain alphanumeric characters", 422)
@@ -551,12 +583,18 @@ export async function renameMarkdownFile(id: string, proposedTitle: string, user
       document_path: string
       created_at: string
       updated_at: string
+      icon_color?: string | null
     }
     | undefined
 
   if (!existing) {
     throw new MarkdownFileOperationError("Document not found", 404)
   }
+
+  const iconColor =
+    iconColorInput === undefined
+      ? existing.icon_color ?? null
+      : resolveIconColorForStorage(iconColorInput)
 
   const sanitizedBase = sanitizeFilename(title)
   if (!sanitizedBase) {
@@ -567,6 +605,7 @@ export async function renameMarkdownFile(id: string, proposedTitle: string, user
   const parentDir = path.posix.dirname(existing.document_path)
   const nextDocumentPath =
     parentDir === "." ? nextFilename : `${parentDir}/${nextFilename}`
+  const metadataChanged = (existing.icon_color ?? null) !== iconColor
 
   // Check if new path already exists (and it's not the same document)
   if (nextDocumentPath !== existing.document_path) {
@@ -587,9 +626,13 @@ export async function renameMarkdownFile(id: string, proposedTitle: string, user
 
   const timestamp = new Date().toISOString()
 
+  if (nextDocumentPath === existing.document_path && title === existing.title && !metadataChanged) {
+    return documentRecordToMeta(existing, false)
+  }
+
   db.prepare(
-    "UPDATE documents SET title = ?, document_path = ?, updated_at = ? WHERE id = ? AND user_id = ?"
-  ).run(title, nextDocumentPath, timestamp, id, userId)
+    "UPDATE documents SET title = ?, document_path = ?, icon_color = ?, updated_at = ? WHERE id = ? AND user_id = ?"
+  ).run(title, nextDocumentPath, iconColor, timestamp, id, userId)
 
   const updated = db
     .prepare("SELECT * FROM documents WHERE id = ? AND user_id = ?")
@@ -600,6 +643,7 @@ export async function renameMarkdownFile(id: string, proposedTitle: string, user
       document_path: string
       created_at: string
       updated_at: string
+      icon_color?: string | null
     }
 
   return documentRecordToMeta(updated, false)
@@ -623,6 +667,7 @@ export async function moveMarkdownFile(
       document_path: string
       created_at: string
       updated_at: string
+      icon_color?: string | null
     }
     | undefined
 
@@ -774,7 +819,18 @@ export async function deleteMarkdownFile(id: string, userId: string) {
   return documentRecordToMeta(existing, false)
 }
 
-export async function renameFolder(folderPathInput: string, newNameInput: string, userId: string) {
+export type UpdateFolderOptions = {
+  newName: string
+  iconColor?: string | null | undefined
+  description?: string | null | undefined
+}
+
+export async function renameFolder(
+  folderPathInput: string,
+  userId: string,
+  options: UpdateFolderOptions
+) {
+  const newNameInput = options.newName
   const sanitizedOldPath = sanitizeFolderPath(folderPathInput)
   if (!sanitizedOldPath) {
     throw new MarkdownFileOperationError("Invalid folder path", 422)
@@ -789,12 +845,21 @@ export async function renameFolder(folderPathInput: string, newNameInput: string
 
   // Check if folder exists
   const folder = db
-    .prepare("SELECT id FROM folders WHERE folder_path = ? AND user_id = ?")
-    .get(sanitizedOldPath, userId) as { id: string } | undefined
+    .prepare("SELECT * FROM folders WHERE folder_path = ? AND user_id = ?")
+    .get(sanitizedOldPath, userId) as FolderRow | undefined
 
   if (!folder) {
     throw new MarkdownFileOperationError("Folder not found", 404)
   }
+
+  const iconColor =
+    options.iconColor === undefined
+      ? folder.icon_color ?? null
+      : resolveIconColorForStorage(options.iconColor)
+  const description =
+    options.description === undefined
+      ? folder.description ?? null
+      : options.description?.trim() || null
 
   // Build new folder path
   const parentSegments = sanitizedOldPath.split("/").slice(0, -1)
@@ -811,8 +876,30 @@ export async function renameFolder(folderPathInput: string, newNameInput: string
     .prepare("SELECT id FROM folders WHERE folder_path = ? AND user_id = ?")
     .get(newFolderPath, userId)
 
-  if (existing) {
+  if (existing && newFolderPath !== sanitizedOldPath) {
     throw new MarkdownFileOperationError("A folder with that name already exists", 409)
+  }
+
+  const nameChanged = newFolderPath !== sanitizedOldPath
+  const metadataChanged =
+    (folder.icon_color ?? null) !== iconColor || (folder.description ?? null) !== description
+
+  if (!nameChanged && !metadataChanged) {
+    return folderRowToRecord(folder)
+  }
+
+  const timestamp = new Date().toISOString()
+
+  if (!nameChanged) {
+    db.prepare(
+      "UPDATE folders SET icon_color = ?, description = ?, updated_at = ? WHERE id = ? AND user_id = ?"
+    ).run(iconColor, description, timestamp, folder.id, userId)
+
+    const updated = db
+      .prepare("SELECT * FROM folders WHERE id = ? AND user_id = ?")
+      .get(folder.id, userId) as FolderRow
+
+    return folderRowToRecord(updated)
   }
 
   // Rename the folder directory
@@ -822,21 +909,17 @@ export async function renameFolder(folderPathInput: string, newNameInput: string
   try {
     await rename(oldAbsolutePath, newAbsolutePath)
   } catch (error) {
-    // If rename fails, we should probably rollback the DB change or handle it
-    // For now, we'll just rethrow
     throw error
   }
 
   // Update paths in database
   // We need to update the folder itself AND all children (documents and subfolders)
 
-  const timestamp = new Date().toISOString()
-
   const updateChildren = db.transaction(() => {
     // Update the folder itself
     db.prepare(
-      "UPDATE folders SET folder_path = ?, updated_at = ? WHERE id = ? AND user_id = ?"
-    ).run(newFolderPath, timestamp, folder.id, userId)
+      "UPDATE folders SET folder_path = ?, icon_color = ?, description = ?, updated_at = ? WHERE id = ? AND user_id = ?"
+    ).run(newFolderPath, iconColor, description, timestamp, folder.id, userId)
 
     // Update child folders
     const childFolders = db
@@ -865,23 +948,9 @@ export async function renameFolder(folderPathInput: string, newNameInput: string
 
   const updated = db
     .prepare("SELECT * FROM folders WHERE id = ? AND user_id = ?")
-    .get(folder.id, userId) as {
-      id: string
-      user_id: string
-      folder_path: string
-      created_at: string
-      updated_at: string
-      sort_order: number
-    }
+    .get(folder.id, userId) as FolderRow
 
-  return {
-    id: updated.id,
-    kind: "folder" as const,
-    folderPath: updated.folder_path,
-    createdAt: updated.created_at,
-    updatedAt: updated.updated_at,
-    sortOrder: updated.sort_order,
-  }
+  return folderRowToRecord(updated)
 }
 
 export async function moveFolder(
@@ -988,23 +1057,9 @@ export async function moveFolder(
 
   const updated = db
     .prepare("SELECT * FROM folders WHERE id = ? AND user_id = ?")
-    .get(folder.id, userId) as {
-      id: string
-      user_id: string
-      folder_path: string
-      created_at: string
-      updated_at: string
-      sort_order: number
-    }
+    .get(folder.id, userId) as FolderRow
 
-  return {
-    id: updated.id,
-    kind: "folder" as const,
-    folderPath: updated.folder_path,
-    createdAt: updated.created_at,
-    updatedAt: updated.updated_at,
-    sortOrder: updated.sort_order,
-  }
+  return folderRowToRecord(updated)
 }
 
 export async function updateSortOrder(

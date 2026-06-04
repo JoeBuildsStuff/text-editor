@@ -20,6 +20,10 @@ interface CopyButtonProps extends Omit<ButtonProps, 'onClick'> {
   errorMessage?: string;
   /** Size of the copy/check icons */
   iconSize?: number;
+  /** Label shown before copy; used for accessible/title text. */
+  tooltipText?: string;
+  /** Label shown after copy; used for accessible/title text. */
+  tooltipCopiedText?: string;
   /** Custom callback when copy is successful */
   onCopySuccess?: () => void;
   /** Custom callback when copy fails */
@@ -31,6 +35,8 @@ export function CopyButton({
   successMessage,
   errorMessage,
   iconSize = 16,
+  tooltipText = "Copy",
+  tooltipCopiedText = "Copied",
   onCopySuccess,
   onCopyError,
   className,
@@ -62,6 +68,8 @@ export function CopyButton({
       )}
       onClick={handleCopy}
       disabled={!textToCopy}
+      aria-label={isCopied ? tooltipCopiedText : tooltipText}
+      title={isCopied ? tooltipCopiedText : tooltipText}
       {...props}
     >
       {isCopied ? (

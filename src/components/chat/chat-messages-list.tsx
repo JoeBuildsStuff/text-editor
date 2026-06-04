@@ -48,7 +48,7 @@ export function ChatMessagesList({
           <ChatMessage
             key={message.id}
             message={message}
-            onActionClick={onActionClick}
+            {...(onActionClick ? { onActionClick } : {})}
           />
         ))}
 

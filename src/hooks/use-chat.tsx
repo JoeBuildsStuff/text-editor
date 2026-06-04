@@ -109,13 +109,14 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
       throw new Error(res.error);
     }
     const session = res.data!;
+    const context = session.context as unknown as PageContext | undefined;
     upsertSessionFromServer({
       id: session.id,
       title: session.title,
       createdAt: new Date(session.created_at),
       updatedAt: new Date(session.updated_at),
       messages: [],
-      context: session.context as unknown as PageContext | undefined,
+      ...(context ? { context } : {}),
     });
     setCurrentSessionIdFromServer(session.id);
     return session.id;
@@ -169,51 +170,61 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
             )
           : [];
 
+        const context = m.context
+          ? {
+              filters:
+                ((m.context as Record<string, unknown>)?.filters as Record<
+                  string,
+                  unknown
+                >) || {},
+              data:
+                ((m.context as Record<string, unknown>)?.data as Record<
+                  string,
+                  unknown
+                >) || {},
+            }
+          : undefined;
+        const suggestedActions = Array.isArray(m.chat_suggested_actions)
+          ? m.chat_suggested_actions.map((a: ChatSuggestedActionRow) => ({
+              type: a.type,
+              label: a.label,
+              payload: a.payload as Record<string, unknown>,
+            }))
+          : undefined;
+        const functionResult = m.function_result as
+          | { success: boolean; data?: unknown; error?: string }
+          | undefined;
+        const toolCalls = Array.isArray(m.chat_tool_calls)
+          ? m.chat_tool_calls.map((t: ChatToolCallRow) => {
+              const result = t.result as
+                | { success: boolean; data?: unknown; error?: string }
+                | undefined;
+
+              return {
+                id: t.id,
+                name: t.name,
+                arguments: t.arguments as Record<string, unknown>,
+                ...(result ? { result } : {}),
+                ...(t.reasoning ? { reasoning: t.reasoning } : {}),
+              };
+            })
+          : undefined;
+        const citations = m.citations as
+          | Array<{ url: string; title: string; cited_text: string }>
+          | undefined;
+
         allMessages.push({
           id: m.id,
           role: m.role,
           content: m.content,
           timestamp: new Date(m.created_at),
-          reasoning: m.reasoning || undefined,
           attachments,
-          context: m.context
-            ? {
-                filters:
-                  ((m.context as Record<string, unknown>)?.filters as Record<
-                    string,
-                    unknown
-                  >) || {},
-                data:
-                  ((m.context as Record<string, unknown>)?.data as Record<
-                    string,
-                    unknown
-                  >) || {},
-              }
-            : undefined,
-          suggestedActions: Array.isArray(m.chat_suggested_actions)
-            ? m.chat_suggested_actions.map((a: ChatSuggestedActionRow) => ({
-                type: a.type,
-                label: a.label,
-                payload: a.payload as Record<string, unknown>,
-              }))
-            : undefined,
-          functionResult: m.function_result as
-            | { success: boolean; data?: unknown; error?: string }
-            | undefined,
-          toolCalls: Array.isArray(m.chat_tool_calls)
-            ? m.chat_tool_calls.map((t: ChatToolCallRow) => ({
-                id: t.id,
-                name: t.name,
-                arguments: t.arguments as Record<string, unknown>,
-                result: t.result as
-                  | { success: boolean; data?: unknown; error?: string }
-                  | undefined,
-                reasoning: t.reasoning || undefined,
-              }))
-            : undefined,
-          citations: m.citations as
-            | Array<{ url: string; title: string; cited_text: string }>
-            | undefined,
+          ...(m.reasoning ? { reasoning: m.reasoning } : {}),
+          ...(context ? { context } : {}),
+          ...(suggestedActions ? { suggestedActions } : {}),
+          ...(functionResult ? { functionResult } : {}),
+          ...(toolCalls ? { toolCalls } : {}),
+          ...(citations ? { citations } : {}),
         });
       }
 
@@ -360,26 +371,30 @@ export function useChat({ onSendMessage, onActionClick }: UseChatProps = {}) {
       if (!options?.skipUserAdd) {
         const trimmed = content.trim() || "Sent with attachments";
         const prevLen = useChatStore.getState().messages.length;
-        const localAttachments = (attachments || []).map((a) => ({
-          id: crypto.randomUUID(),
-          name: a.name,
-          size: a.size,
-          type: a.type,
-          // Show instant preview for images; use blob URL to avoid heavy base64
-          data: a.type.startsWith("image/")
+        const localAttachments = (attachments || []).map((a) => {
+          const previewUrl = a.type.startsWith("image/")
             ? URL.createObjectURL(a.file)
-            : undefined,
-        }));
+            : undefined;
+
+          return {
+            id: crypto.randomUUID(),
+            name: a.name,
+            size: a.size,
+            type: a.type,
+            ...(previewUrl ? { data: previewUrl } : {}),
+          };
+        });
+        const messageContext = currentContext
+          ? {
+              filters: currentContext.currentFilters,
+              data: { totalCount: currentContext.totalCount },
+            }
+          : undefined;
         addMessage({
           role: "user",
           content: trimmed,
           attachments: localAttachments,
-          context: currentContext
-            ? {
-                filters: currentContext.currentFilters,
-                data: { totalCount: currentContext.totalCount },
-              }
-            : undefined,
+          ...(messageContext ? { context: messageContext } : {}),
         });
         const newMessages = useChatStore.getState().messages;
         if (newMessages.length > prevLen)

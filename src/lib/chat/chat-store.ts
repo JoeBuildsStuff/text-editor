@@ -555,7 +555,7 @@ export const useChatStore = create<ChatStore>()(
             messages: session.messages || [],
             createdAt: session.createdAt,
             updatedAt: session.updatedAt,
-            context: session.context,
+            ...(session.context ? { context: session.context } : {}),
           };
 
           const sessions = exists
@@ -724,7 +724,7 @@ export const useChatStore = create<ChatStore>()(
             addMessage({
               role: "user",
               content: message.content,
-              context: message.context,
+              ...(message.context ? { context: message.context } : {}),
             });
           }, 100);
         }
@@ -740,6 +740,7 @@ export const useChatStore = create<ChatStore>()(
         });
         if (order.length === 0) return { current: 0, total: 0 };
         const currentSig = entry.signatures[entry.activeIndex];
+        if (!currentSig) return { current: 0, total: order.length };
         const pos = Math.max(0, order.indexOf(currentSig));
         return { current: pos + 1, total: order.length };
       },
@@ -749,6 +750,7 @@ export const useChatStore = create<ChatStore>()(
         const entry = get().messageBranches[messageId];
         if (!entry) return { current: 0, total: 0 };
         const activeSig = entry.signatures[entry.activeIndex];
+        if (!activeSig) return { current: 0, total: 0 };
         const filtered = entry.signatures
           .map((sig, idx) => ({ sig, idx }))
           .filter((x) => x.sig === activeSig)
@@ -775,8 +777,10 @@ export const useChatStore = create<ChatStore>()(
         });
         if (sigOrder.length <= 1) return;
         const currentSig = entry.signatures[entry.activeIndex];
+        if (!currentSig) return;
         const sigPos = sigOrder.indexOf(currentSig);
         const newSig = sigOrder[Math.max(0, sigPos - 1)];
+        if (!newSig) return;
         const candidateIndices = entry.signatures
           .map((sig, idx) => ({ sig, idx }))
           .filter((x) => x.sig === newSig)
@@ -839,8 +843,10 @@ export const useChatStore = create<ChatStore>()(
         });
         if (sigOrder.length <= 1) return;
         const currentSig = entry.signatures[entry.activeIndex];
+        if (!currentSig) return;
         const sigPos = sigOrder.indexOf(currentSig);
         const newSig = sigOrder[Math.min(sigOrder.length - 1, sigPos + 1)];
+        if (!newSig) return;
         const candidateIndices = entry.signatures
           .map((sig, idx) => ({ sig, idx }))
           .filter((x) => x.sig === newSig)
@@ -897,6 +903,7 @@ export const useChatStore = create<ChatStore>()(
         if (rootIndex === -1) return;
 
         const activeSig = entry.signatures[entry.activeIndex];
+        if (!activeSig) return;
         const filtered = entry.signatures
           .map((sig, idx) => ({ sig, idx }))
           .filter((x) => x.sig === activeSig)
@@ -904,6 +911,7 @@ export const useChatStore = create<ChatStore>()(
         const pos = filtered.indexOf(entry.activeIndex);
         if (pos <= 0) return;
         const newIndex = filtered[pos - 1];
+        if (newIndex === undefined) return;
         const newTail = entry.branches[newIndex] || [];
 
         set((state) => {
@@ -951,6 +959,7 @@ export const useChatStore = create<ChatStore>()(
         if (rootIndex === -1) return;
 
         const activeSig = entry.signatures[entry.activeIndex];
+        if (!activeSig) return;
         const filtered = entry.signatures
           .map((sig, idx) => ({ sig, idx }))
           .filter((x) => x.sig === activeSig)
@@ -958,6 +967,7 @@ export const useChatStore = create<ChatStore>()(
         const pos = filtered.indexOf(entry.activeIndex);
         if (pos === -1 || pos >= filtered.length - 1) return;
         const newIndex = filtered[pos + 1];
+        if (newIndex === undefined) return;
         const newTail = entry.branches[newIndex] || [];
 
         set((state) => {
@@ -1035,17 +1045,17 @@ export const useChatStore = create<ChatStore>()(
             session.id === state.currentSessionId
               ? {
                   ...session,
-                  messages: session.messages.map((msg) =>
-                    msg.id === messageId
-                      ? {
-                          ...msg,
-                          toolCalls: msg.toolCalls?.map((tc) =>
-                            tc.id === toolCallId ? { ...tc, result } : tc
-                          ),
-                          updatedAt: new Date(),
-                        }
-                      : msg
-                  ),
+	                  messages: session.messages.map((msg) =>
+	                    msg.id === messageId && msg.toolCalls
+	                      ? {
+	                          ...msg,
+	                          toolCalls: msg.toolCalls.map((tc) =>
+	                            tc.id === toolCallId ? { ...tc, result } : tc
+	                          ),
+	                          updatedAt: new Date(),
+	                        }
+	                      : msg
+	                  ),
                 }
               : session
           );

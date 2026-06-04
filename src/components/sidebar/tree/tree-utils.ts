@@ -86,6 +86,7 @@ export function buildDocumentsTree(
           folderPath,
           sortOrder: 0,
           children: [],
+          iconColor: undefined,
         }
         children.push(folderNode)
       } else {
@@ -103,6 +104,12 @@ export function buildDocumentsTree(
     const segments = folder.folderPath.split("/").filter(Boolean)
     const node = ensureFolderNode(segments)
     node.sortOrder = parseSortOrder(folder.sortOrder)
+    if (folder.iconColor) {
+      node.iconColor = folder.iconColor
+    }
+    if (folder.description) {
+      node.description = folder.description
+    }
   })
 
   files.forEach((file) => {
@@ -125,6 +132,7 @@ export function buildDocumentsTree(
       documentId: file.id,
       documentPath: file.documentPath,
       sortOrder: parseSortOrder(file.sortOrder),
+      iconColor: file.iconColor,
     }
 
     children.push(documentNode)

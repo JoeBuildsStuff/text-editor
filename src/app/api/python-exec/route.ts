@@ -7,18 +7,16 @@ import path from "node:path"
 import { requireAdminSession } from "@/lib/auth/session"
 import { isExecutionMode } from "@/lib/execution-modes"
 import type { ExecutionMode } from "@/lib/execution-modes"
+import { SANDBOX_ROOT, resolveUserSandboxDir } from "@/lib/python-sandbox"
 
 const EXECUTION_TIMEOUT_MS =
   process.env.PYTHON_EXEC_TIMEOUT_MS ? parseInt(process.env.PYTHON_EXEC_TIMEOUT_MS, 10) : 120_000
 const RATE_LIMIT_WINDOW_MS = 60_000
 const RATE_LIMIT_MAX_REQUESTS = 60
-export const SANDBOX_ROOT =
-  process.env.PYTHON_SANDBOX_DIR ?? path.join(process.cwd(), "server", "python-sandbox")
 const PYTHON_DOCKER_IMAGE = process.env.PYTHON_DOCKER_IMAGE ?? "python:3.11-slim"
 const NODE_DOCKER_IMAGE = process.env.NODE_DOCKER_IMAGE ?? "node:22-slim"
 
 const SAFE_ENV_KEYS = ["PATH", "PYTHONPATH", "HOME", "LANG", "PYTHONUSERBASE"] as const
-const SANDBOX_USER_SEGMENT = /[^a-zA-Z0-9_-]/g
 const textEncoder = new TextEncoder()
 
 const HARDENED_SANDBOX_ENABLED =
@@ -98,11 +96,6 @@ async function ensureSandboxRoot() {
       .then(() => ensureWorldWritableDir(SANDBOX_ROOT))
   }
   await preparedSandboxRoot
-}
-
-function resolveUserSandboxDir(userId: string) {
-  const safeSegment = userId.replace(SANDBOX_USER_SEGMENT, "_")
-  return path.join(SANDBOX_ROOT, safeSegment)
 }
 
 async function ensureUserSandbox(userId: string) {
@@ -212,11 +205,6 @@ function buildDockerCommand(mode: ExecutionMode, code: string, userSandboxDir: s
       ...runtimeArgs,
     ],
   }
-}
-
-// Export helper for other modules
-export function resolveUserSandboxDirExported(userId: string) {
-  return resolveUserSandboxDir(userId)
 }
 
 function buildLocalCommand(mode: ExecutionMode, code: string) {

@@ -16,9 +16,18 @@ import { useFolderActions } from "@/components/sidebar/hooks/use-folder-actions"
 import { useTreeReorder } from "@/components/sidebar/hooks/use-tree-reorder"
 import { executeDropScenario } from "@/components/sidebar/hooks/execute-drop-scenario"
 import { useRenameDialog } from "@/components/sidebar/hooks/use-rename-dialog"
+import { useCreateFolderDialog } from "@/components/sidebar/hooks/use-create-folder-dialog"
+import type { CreateFolderDialogProps } from "@/components/sidebar/create-folder-dialog"
+import { useCreateDocumentDialog } from "@/components/sidebar/hooks/use-create-document-dialog"
+import type { CreateDocumentDialogProps } from "@/components/sidebar/create-document-dialog"
 import { useAbortableAction } from "@/hooks/use-abortable-action"
 import { useCallbackStability } from "@/hooks/use-callback-stability"
 import { renameMarkdownDocument, renameMarkdownFolder } from "@/components/sidebar/api/markdown-actions"
+import {
+  documentRenameHasChanges,
+  folderRenameHasChanges,
+} from "@/components/sidebar/hooks/rename-dialog-reducer"
+import type { MarkdownDocument, MarkdownFolder } from "@/components/sidebar/tree/tree-types"
 
 export type MarkdownExplorerResult = {
   isLoadingFiles: boolean
@@ -29,17 +38,70 @@ export type MarkdownExplorerResult = {
   createDocument: () => void
   createFolder: () => void
   renameDialogProps: RenameDialogProps
+  createDocumentDialogProps: CreateDocumentDialogProps
+  createFolderDialogProps: CreateFolderDialogProps
 }
 
 export function useMarkdownExplorer(): MarkdownExplorerResult {
   const [isActionPending, startActionTransition] = useTransition()
   const data = useMarkdownData()
   const navigation = useDocumentNavigation()
+  const renameDialog = useRenameDialog()
+  const createDocumentDialog = useCreateDocumentDialog()
+  const createFolderDialog = useCreateFolderDialog()
+
+  const foldersWithRenamePreview = useMemo(() => {
+    const state = renameDialog.state
+    if (state.status !== "open" || state.entityType !== "folder") {
+      return data.folders
+    }
+
+    return data.folders.map((folder) =>
+      folder.folderPath === state.folderPath
+        ? {
+            ...folder,
+            iconColor: state.iconColor ?? undefined,
+          }
+        : folder
+    )
+  }, [data.folders, renameDialog.state])
+
+  const documentsWithRenamePreview = useMemo(() => {
+    const state = renameDialog.state
+    if (state.status !== "open" || state.entityType !== "document") {
+      return data.documents
+    }
+
+    return data.documents.map((document) =>
+      document.id === state.documentId
+        ? {
+            ...document,
+            iconColor: state.iconColor ?? undefined,
+          }
+        : document
+    )
+  }, [data.documents, renameDialog.state])
 
   const treeElements = useMemo(
-    () => buildDocumentsTree(data.documents, data.folders),
-    [data.documents, data.folders]
+    () => buildDocumentsTree(documentsWithRenamePreview, foldersWithRenamePreview),
+    [documentsWithRenamePreview, foldersWithRenamePreview]
   )
+
+  const foldersByPath = useMemo(() => {
+    const map = new Map<string, MarkdownFolder>()
+    foldersWithRenamePreview.forEach((folder) => {
+      map.set(folder.folderPath, folder)
+    })
+    return map
+  }, [foldersWithRenamePreview])
+
+  const documentsById = useMemo(() => {
+    const map = new Map<string, MarkdownDocument>()
+    documentsWithRenamePreview.forEach((document) => {
+      map.set(document.id, document)
+    })
+    return map
+  }, [documentsWithRenamePreview])
 
   const folderState = useFolderState(treeElements, navigation.selectedSlug)
   const reorderActions = useTreeReorder(data.folders)
@@ -55,8 +117,6 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
     startTransition: startActionTransition,
   })
 
-  const renameDialog = useRenameDialog()
-
   const folderActions = useFolderActions({
     updateIndex: data.updateIndex,
     invalidateData: data.invalidate,
@@ -64,7 +124,7 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
     closeFolderPath: folderState.closeFolderPath,
     navigateToSlug: navigation.navigateToSlug,
     navigateToDocuments: navigation.navigateToDocuments,
-    openRenameDialogForFolder: renameDialog.openForFolder,
+    openCreateFolderDialog: createFolderDialog.open,
     selectedSlug: navigation.selectedSlug,
     startTransition: startActionTransition,
   })
@@ -107,13 +167,25 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
     }
 
     const trimmed = state.newName.trim()
-    if (!trimmed || trimmed === state.currentName) {
-      renameDialog.close()
+    if (!trimmed) {
       return
     }
 
     if (state.entityType === "folder") {
-      await renameMarkdownFolder(state.folderPath, trimmed, signal)
+      if (!folderRenameHasChanges(state)) {
+        renameDialog.close()
+        return
+      }
+
+      await renameMarkdownFolder(
+        state.folderPath,
+        {
+          newName: trimmed,
+          iconColor: state.iconColor,
+          description: state.description.trim() || null,
+        },
+        signal
+      )
       if (signal.aborted) {
         return
       }
@@ -121,9 +193,18 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
       if (signal.aborted) {
         return
       }
-      toast.success(`Renamed folder to "${trimmed}"`)
+      const nameChanged = trimmed !== state.currentName
+      toast.success(nameChanged ? `Renamed folder to "${trimmed}"` : "Folder updated")
     } else {
-      const document = await renameMarkdownDocument(state.documentId, trimmed, signal)
+      if (!documentRenameHasChanges(state)) {
+        renameDialog.close()
+        return
+      }
+      const document = await renameMarkdownDocument(
+        state.documentId,
+        { title: trimmed, iconColor: state.iconColor },
+        signal
+      )
       if (signal.aborted) {
         return
       }
@@ -135,13 +216,67 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
         navigation.updateSlugInPlace(document.slug)
       }
       const label = document?.title ?? trimmed
-      toast.success(`Renamed document to "${label}"`)
+      const nameChanged = trimmed !== state.currentName
+      toast.success(nameChanged ? `Renamed document to "${label}"` : "Document updated")
     }
 
     if (!signal.aborted) {
       renameDialog.close()
     }
   })
+
+  const handleCreateFolderSubmit = useCallback(() => {
+    const state = createFolderDialog.state
+    if (state.status !== "open" || isActionPending) {
+      return
+    }
+
+    startActionTransition(() => {
+      folderActions
+        .submitCreate({
+          parentPath: state.parentPath,
+          name: state.name,
+          iconColor: state.iconColor,
+          description: state.description.trim() || null,
+        })
+        .then(() => {
+          createFolderDialog.close()
+        })
+        .catch((error: unknown) => {
+          if (error instanceof DOMException && error.name === "AbortError") {
+            return
+          }
+          console.error(error)
+          toast.error(error instanceof Error ? error.message : "Unable to create folder")
+        })
+    })
+  }, [createFolderDialog, folderActions, isActionPending, startActionTransition])
+
+  const handleCreateDocumentSubmit = useCallback(() => {
+    const state = createDocumentDialog.state
+    if (state.status !== "open" || isActionPending) {
+      return
+    }
+
+    startActionTransition(() => {
+      documentActions
+        .submitCreate({
+          folderPath: state.folderPath,
+          title: state.name,
+          iconColor: state.iconColor,
+        })
+        .then(() => {
+          createDocumentDialog.close()
+        })
+        .catch((error: unknown) => {
+          if (error instanceof DOMException && error.name === "AbortError") {
+            return
+          }
+          console.error(error)
+          toast.error(error instanceof Error ? error.message : "Unable to create document")
+        })
+    })
+  }, [createDocumentDialog, documentActions, isActionPending, startActionTransition])
 
   const handleRenameSubmit = useCallback(() => {
     if (isActionPending) {
@@ -162,9 +297,33 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
   const renameDialogProps: RenameDialogProps = {
     state: renameDialog.state,
     isPending: isActionPending,
+    canSubmit: renameDialog.canSubmit,
     onNewNameChange: (value) => renameDialog.updateNewName(value),
+    onIconColorChange: (value) => renameDialog.updateIconColor(value),
+    onDescriptionChange: (value) => renameDialog.updateDescription(value),
     onSubmit: handleRenameSubmit,
     onClose: () => renameDialog.close(),
+  }
+
+  const createFolderDialogProps: CreateFolderDialogProps = {
+    state: createFolderDialog.state,
+    isPending: isActionPending,
+    canSubmit: createFolderDialog.canSubmit,
+    onNameChange: createFolderDialog.setName,
+    onIconColorChange: createFolderDialog.setIconColor,
+    onDescriptionChange: createFolderDialog.setDescription,
+    onSubmit: handleCreateFolderSubmit,
+    onClose: () => createFolderDialog.close(),
+  }
+
+  const createDocumentDialogProps: CreateDocumentDialogProps = {
+    state: createDocumentDialog.state,
+    isPending: isActionPending,
+    canSubmit: createDocumentDialog.canSubmit,
+    onNameChange: createDocumentDialog.setName,
+    onIconColorChange: createDocumentDialog.setIconColor,
+    onSubmit: handleCreateDocumentSubmit,
+    onClose: () => createDocumentDialog.close(),
   }
 
   const treeProps: SidebarTreeProps = {
@@ -173,12 +332,23 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
     openFolders: folderState.openFolders,
     onToggleFolder: folderState.toggleFolder,
     isActionPending,
-    onCreateDocument: documentActions.create,
-    onCreateFolder: folderActions.create,
+    onCreateDocument: createDocumentDialog.open,
+    onCreateFolder: folderActions.requestCreate,
     onDeleteFolder: folderActions.delete,
     onDeleteDocument: documentActions.delete,
-    onRenameFolder: (folderPath, currentName) => renameDialog.openForFolder(folderPath, currentName),
-    onRenameDocument: (documentId, currentName) => renameDialog.openForDocument(documentId, currentName),
+    onRenameFolder: (folderPath, currentName) => {
+      const folder = foldersByPath.get(folderPath)
+      renameDialog.openForFolder(folderPath, currentName, {
+        iconColor: folder?.iconColor ?? null,
+        description: folder?.description ?? "",
+      })
+    },
+    onRenameDocument: (documentId, currentName) => {
+      const document = documentsById.get(documentId)
+      renameDialog.openForDocument(documentId, currentName, {
+        iconColor: document?.iconColor ?? null,
+      })
+    },
     onSelect: navigation.navigateToSlug,
     sensors: dnd.sensors,
     collisionDetection: dnd.collisionDetection,
@@ -194,8 +364,10 @@ export function useMarkdownExplorer(): MarkdownExplorerResult {
     isActionPending,
     hasTreeData: treeElements.length > 0,
     treeProps,
-    createDocument: () => documentActions.create(),
-    createFolder: () => folderActions.create(),
+    createDocument: () => createDocumentDialog.open(),
+    createFolder: () => folderActions.requestCreate(),
     renameDialogProps,
+    createDocumentDialogProps,
+    createFolderDialogProps,
   }
 }

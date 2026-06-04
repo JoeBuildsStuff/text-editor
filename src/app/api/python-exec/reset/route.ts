@@ -3,7 +3,7 @@ import { rm, stat } from "node:fs/promises"
 import path from "node:path"
 
 import { requireAdminSession } from "@/lib/auth/session"
-import { SANDBOX_ROOT, resolveUserSandboxDirExported } from "../route"
+import { SANDBOX_ROOT, resolveUserSandboxDir } from "@/lib/python-sandbox"
 
 /**
  * POST /api/python-exec/reset
@@ -24,7 +24,7 @@ export async function POST(request: Request) {
   const payload = await request.json().catch(() => ({}))
   const packagesOnly = payload?.packagesOnly === true
 
-  const userSandboxDir = resolveUserSandboxDirExported(session.user.id)
+  const userSandboxDir = resolveUserSandboxDir(session.user.id)
 
   // Security check: ensure the path is within SANDBOX_ROOT
   const resolvedPath = path.resolve(userSandboxDir)
@@ -45,7 +45,7 @@ export async function POST(request: Request) {
           message: "Python packages cleared. Your files have been preserved.",
           cleared: "packages",
         })
-      } catch (error) {
+      } catch {
         // Directory doesn't exist, nothing to clear
         return NextResponse.json({
           success: true,
@@ -63,7 +63,7 @@ export async function POST(request: Request) {
           message: "Sandbox environment reset. All packages and files have been cleared.",
           cleared: "all",
         })
-      } catch (error) {
+      } catch {
         // Directory doesn't exist, nothing to clear
         return NextResponse.json({
           success: true,
@@ -92,7 +92,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const userSandboxDir = resolveUserSandboxDirExported(session.user.id)
+  const userSandboxDir = resolveUserSandboxDir(session.user.id)
 
   try {
     const stats = await stat(userSandboxDir)
@@ -107,7 +107,7 @@ export async function GET(request: Request) {
       })
       du.on("close", () => {
         const match = output.match(/^(\d+)/)
-        resolve(match ? parseInt(match[1], 10) : 0)
+        resolve(parseInt(match?.[1] ?? "0", 10))
       })
       du.on("error", () => resolve(0))
     })
@@ -122,7 +122,7 @@ export async function GET(request: Request) {
       createdAt: stats.birthtime.toISOString(),
       modifiedAt: stats.mtime.toISOString(),
     })
-  } catch (error) {
+  } catch {
     return NextResponse.json({
       exists: false,
       path: userSandboxDir,

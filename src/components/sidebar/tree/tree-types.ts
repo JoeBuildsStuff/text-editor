@@ -11,6 +11,7 @@ export type MarkdownDocument = {
   documentPath: string
   slug: string
   sortOrder?: number | undefined
+  iconColor?: string | undefined
 }
 
 export type MarkdownFolder = {
@@ -19,12 +20,16 @@ export type MarkdownFolder = {
   createdAt: string
   updatedAt: string
   sortOrder?: number | undefined
+  iconColor?: string | undefined
+  description?: string | undefined
 }
 
 export interface SidebarTreeElement extends TreeViewElement {
   children?: SidebarTreeElement[] | undefined
   kind: "folder" | "document"
   folderPath?: string | undefined
+  iconColor?: string | undefined
+  description?: string | undefined
   documentId?: string | undefined
   documentPath?: string | undefined
   sortOrder?: number | undefined
